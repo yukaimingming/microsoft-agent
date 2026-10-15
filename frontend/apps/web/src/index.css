@@ -1,0 +1,671 @@
+@import "tailwindcss";
+
+/* 设计令牌：深色工作台基调，活动卡片用色需与状态语义区分。 */
+@theme {
+  --color-surface-0: #0b0d12;
+  --color-surface-1: #12151d;
+  --color-surface-2: #1a1f29;
+  --color-surface-3: #232a36;
+  --color-border-subtle: #262d3a;
+  --color-border-strong: #364152;
+  --color-text-primary: #e8ecf3;
+  --color-text-secondary: #a3adbf;
+  --color-text-muted: #6b7688;
+
+  --color-state-running: #4c8dff;
+  --color-state-done: #3ecf8e;
+  --color-state-warn: #f5a524;
+  --color-state-error: #f2555a;
+
+  --color-foreground: #ffffff;
+  --color-muted-foreground: #71717a;
+  --color-ring: #3f3f46;
+  --color-input: #3f3f46;
+
+  /* shadcn/ui 语义令牌：Confirmation / Alert / Button / Card 等组件依赖，
+     暗色取值对齐 AI SDK Elements 官网（近黑卡片、白 10% 边框、亮蓝主按钮）。 */
+  --color-background: #050505;
+  --color-card: #141417;
+  --color-card-foreground: #f4f4f5;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #1f1f23;
+  --color-secondary-foreground: #e4e4e7;
+  --color-accent: #27272a;
+  --color-accent-foreground: #f4f4f5;
+  --color-destructive: #ef4444;
+  --color-border: rgba(255, 255, 255, 0.1);
+
+  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+
+/* Tailwind v4 的 border 默认取 currentColor，与 shadcn/ui 组件（默认 border-border）
+   不兼容；统一回填语义边框色，避免 Confirmation 卡片出现纯白描边。 */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+}
+
+:root {
+  --color-foreground: #ffffff;
+  --color-muted-foreground: #71717a;
+  --ring: 240 5% 26%;
+  --input: 240 5% 15%;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条：低调处理，避免抢注意力。 */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 6px;
+  border: 2px solid var(--color-surface-0);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+/* 生成中的光标提示。 */
+@keyframes caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  95% {
+    opacity: 0;
+  }
+}
+.streaming-caret::after {
+  content: "▍";
+  margin-left: 1px;
+  animation: caret-blink 1s steps(1) infinite;
+  color: var(--color-state-running);
+}
+
+/* 进行中的脉冲点。 */
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pulse-dot {
+  animation: soft-pulse 1.4s ease-in-out infinite;
+}
+
+/* 过程活动按时间线轻柔进入；同一时刻发出的并行调用会短暂错开。 */
+@keyframes process-activity-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.process-activity-enter {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .process-activity-enter {
+    animation: none;
+  }
+}
+
+/* 文字微光扫过（AI Elements 的 Shimmer 组件使用）。 */
+@keyframes shimmer-sweep {
+  0% {
+    background-position: 100% center;
+  }
+  100% {
+    background-position: -100% center;
+  }
+}
+
+/* ================= 浅色主题模式适配 (Light Theme) ================= */
+html.light,
+[data-theme="light"] {
+  --color-surface-0: #ffffff;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-surface-3: #f1f5f9;
+  --color-border-subtle: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #334155;
+  --color-text-muted: #64748b;
+  --color-state-running: #1d4ed8;
+  --color-state-done: #15803d;
+  --color-state-warn: #b45309;
+  --color-state-error: #b91c1c;
+  --color-foreground: #0f172a;
+  --color-muted-foreground: #64748b;
+  --color-input: #ffffff;
+  --color-ring: #cbd5e1;
+
+  /* 语义令牌浅色取值：纯白卡片 + 清晰浅灰边框，批准按钮保持亮蓝突出。 */
+  --color-background: #ffffff;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+  --color-accent: #f1f5f9;
+  --color-accent-foreground: #0f172a;
+  --color-destructive: #dc2626;
+  --color-border: #e2e8f0;
+  --color-diff-add: #166534;
+  --color-diff-delete: #b91c1c;
+  --color-diff-context: #334155;
+}
+
+:root {
+  --color-diff-add: #86efac;
+  --color-diff-delete: #fca5a5;
+  --color-diff-context: #a3adbf;
+}
+
+html.light body,
+html.light #root {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* 核心容器与布局背景浅色切换：纯白 */
+html.light .bg-black {
+  background-color: #ffffff !important;
+}
+html.light .bg-zinc-950,
+html.light .bg-zinc-950\/70,
+html.light .bg-zinc-950\/60,
+html.light .bg-zinc-950\/40 {
+  background-color: #ffffff !important;
+}
+html.light .bg-zinc-900,
+html.light .bg-zinc-900\/80,
+html.light .bg-zinc-900\/90,
+html.light .bg-zinc-900\/60 {
+  background-color: #f8fafc !important;
+}
+html.light .bg-\[\#09090b\],
+html.light .bg-\[\#0c0c0e\],
+html.light .bg-\[\#121214\] {
+  background-color: #ffffff !important;
+}
+
+/* 文本颜色切换 */
+html.light .text-zinc-100,
+html.light .text-zinc-200,
+html.light .text-white {
+  color: #0f172a !important;
+}
+html.light .text-zinc-300,
+html.light .text-zinc-400 {
+  color: #334155 !important;
+}
+html.light .text-zinc-500 {
+  color: #64748b !important;
+}
+
+/* 边框切换 */
+html.light .border-zinc-800,
+html.light .border-zinc-800\/80,
+html.light .border-zinc-800\/60,
+html.light .border-zinc-800\/40,
+html.light .border-zinc-700,
+html.light .border-zinc-700\/80,
+html.light .border-zinc-700\/60 {
+  border-color: #e2e8f0 !important;
+}
+
+/* 悬浮状态适配 */
+html.light .hover\:bg-zinc-800:hover {
+  background-color: #f1f5f9 !important;
+}
+html.light .hover\:bg-zinc-900:hover,
+html.light .hover\:bg-zinc-900\/60:hover {
+  background-color: #f8fafc !important;
+}
+html.light .hover\:text-white:hover,
+html.light .hover\:text-zinc-200:hover {
+  color: #0f172a !important;
+}
+
+/* ================= 侧边栏聊天记录列表浅色模式适配 ================= */
+/* 选中项：柔和淡灰背景 + 清晰深色文字 + 细腻边框，绝不黑成一团 */
+html.light .sidebar-session-item[data-active="true"],
+html.light .sidebar-session-item.bg-zinc-800,
+html.light .bg-zinc-800 {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+html.light .sidebar-session-item[data-active="true"] span,
+html.light .sidebar-session-item[data-active="true"] .truncate {
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+html.light .sidebar-session-item[data-active="true"] .bg-zinc-200 {
+  background-color: #0f172a !important;
+}
+/* 未选中项：柔和灰字，悬浮时浅白高亮 */
+html.light .sidebar-session-item[data-active="false"] {
+  color: #475569 !important;
+}
+html.light .sidebar-session-item[data-active="false"]:hover {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+html.light .sidebar-session-item[data-active="false"] .border-zinc-500 {
+  border-color: #94a3b8 !important;
+}
+
+/* ================= 用户消息气泡与输入框浅色适配 ================= */
+html.light .group\/user .bg-zinc-900,
+html.light .group\/user .bg-zinc-900\/90 {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04) !important;
+}
+html.light .group\/user .bg-zinc-900 p,
+html.light .group\/user .bg-zinc-900\/90 p {
+  color: #0f172a !important;
+}
+html.light .group\/user textarea {
+  color: #0f172a !important;
+}
+html.light [data-slot="prompt-input"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+html.light [data-slot="prompt-input"] textarea {
+  color: #0f172a !important;
+}
+html.light [data-slot="prompt-input"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+html.light [data-testid="workspace-mode-selector"] {
+  background-color: #ffffff !important;
+  border: none !important;
+  color: #0f172a !important;
+}
+html.light [data-testid="workspace-mode-selector"]:hover {
+  background-color: #f8fafc !important;
+}
+html.light [data-testid="workspace-mode-selector"] span {
+  color: #0f172a !important;
+}
+html.light .workspace-dropdown-panel {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+html.light .workspace-dropdown-panel button {
+  color: #334155 !important;
+}
+html.light .workspace-dropdown-panel button:hover,
+html.light .workspace-dropdown-panel button.bg-\[\#2f2f35\] {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+html.light .workspace-dropdown-panel button span {
+  color: #0f172a !important;
+}
+html.light .workspace-dropdown-panel button svg {
+  color: #64748b !important;
+}
+html.light .workspace-dropdown-panel button:hover svg,
+html.light .workspace-dropdown-panel button.bg-\[\#2f2f35\] svg {
+  color: #0f172a !important;
+}
+
+/* 输入框的权限、模型和思考等级菜单沿用工作区选择器的主题配色。 */
+html.light .composer-selector {
+  color: #334155 !important;
+  background-color: #f1f5f9 !important;
+}
+html.light .composer-selector:hover {
+  color: #0f172a !important;
+  background-color: #e2e8f0 !important;
+}
+html.light .composer-menu {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+html.light .composer-menu button:not(.bg-\[\#2f2f35\]) {
+  color: #334155 !important;
+}
+html.light .composer-menu button:hover,
+html.light .composer-menu button.bg-\[\#2f2f35\] {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+html.light .composer-menu .text-zinc-500,
+html.light .composer-menu .text-zinc-400,
+html.light .composer-menu .text-zinc-600 {
+  color: #64748b !important;
+}
+html.light .composer-menu .text-orange-400 {
+  color: #c2410c !important;
+}
+html.light .new-chat-sidebar-button {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+html.light .new-chat-sidebar-button:hover,
+html.light .sidebar-add-workspace-button:hover {
+  background-color: #e2e8f0 !important;
+}
+html.light .sidebar-section-heading {
+  color: #475569 !important;
+}
+
+/* ================= 消息区向下滚动按钮：完全不透明纯黑/纯白 ================= */
+.conversation-scroll-btn {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border-color: #3f3f46 !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6) !important;
+}
+.conversation-scroll-btn:hover {
+  background-color: #18181b !important;
+  border-color: #52525b !important;
+}
+
+html.light .conversation-scroll-btn {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
+}
+html.light .conversation-scroll-btn:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+}
+
+
+/* ================= 消息区表格浅色主题规范：表头灰白，表格区纯白 ================= */
+html.light [data-streamdown="table-wrapper"] .overflow-x-auto,
+html.light .table-container {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+}
+html.light [data-streamdown="table"],
+html.light .markdown-table-body {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+/* 表格标题/表头（th）：灰白色背景 */
+html.light [data-streamdown="table"] thead,
+html.light .markdown-table-body thead {
+  background-color: #f1f5f9 !important;
+}
+html.light [data-streamdown="table"] th,
+html.light .markdown-table-body th {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  font-weight: 600 !important;
+}
+/* 表格内容区（td）：纯白背景 */
+html.light [data-streamdown="table"] tbody,
+html.light .markdown-table-body tbody {
+  background-color: #ffffff !important;
+}
+html.light [data-streamdown="table"] td,
+html.light .markdown-table-body td {
+  background-color: #ffffff !important;
+  color: #334155 !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+/* 悬浮行高亮 */
+html.light [data-streamdown="table"] tr:hover td,
+html.light .markdown-table-body tr:hover td {
+  background-color: #f8fafc !important;
+}
+/* 表格复制/下载按钮 */
+html.light [data-streamdown="table-wrapper"] button {
+  color: #64748b !important;
+}
+html.light [data-streamdown="table-wrapper"] button:hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* ================= 提示框浅色规范：全灰白底色，彻底消除黑色小三角 ================= */
+html.light [data-slot="tooltip-content"] {
+  background-color: #f4f4f5 !important;
+  border-color: #e4e4e7 !important;
+  color: #18181b !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+html.light [data-slot="tooltip-content"] p,
+html.light [data-slot="tooltip-content"] span {
+  color: #18181b !important;
+}
+html.light [data-slot="tooltip-arrow"],
+html.light [data-slot="tooltip-content"] [data-slot="tooltip-arrow"],
+html.light svg[data-slot="tooltip-arrow"] {
+  background-color: #f4f4f5 !important;
+  border-color: #e4e4e7 !important;
+  fill: #f4f4f5 !important;
+}
+
+/* ================= 模型与供应商设置弹窗浅色主题优化 ================= */
+html.light .modal-panel {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+html.light .modal-header {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+html.light .modal-header h2 {
+  color: #0f172a !important;
+}
+/* 弹窗所有输入框与下拉选择框：纯白底色、清晰浅灰边框、深黑文字 */
+html.light .modal-panel input,
+html.light .modal-panel select,
+html.light .settings-input {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light .modal-panel input::placeholder {
+  color: #94a3b8 !important;
+}
+html.light .modal-panel label span {
+  color: #475569 !important;
+}
+/* 可用模型列表卡片外框：纯白背景 */
+html.light .settings-models-box {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+html.light .settings-models-label {
+  color: #0f172a !important;
+}
+/* 可用模型列表滚动区域（原 bg-black/60 导致发灰严重）：纯白明亮背景，彻底消除脏灰色 */
+html.light .settings-model-list-scroll {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+/* 默认选中的模型项：高雅浅灰背景 + 深黑字体 */
+html.light .settings-model-item.is-default {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+html.light .settings-model-item:not(.is-default) {
+  color: #334155 !important;
+}
+html.light .settings-model-item:not(.is-default):hover {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+/* 默认模型徽章 */
+html.light .settings-default-badge {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+/* 模型空状态提示 */
+html.light .settings-model-empty {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #64748b !important;
+}
+/* “获取远程模型列表”按钮：亮白浅灰高雅按钮，消除重灰 */
+html.light .settings-fetch-models-btn {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light .settings-fetch-models-btn:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+}
+/* “添加模型”按钮 */
+html.light .settings-add-model-btn {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light .settings-add-model-btn:hover {
+  background-color: #e2e8f0 !important;
+}
+/* “测试连接”按钮 */
+html.light .settings-test-btn {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light .settings-test-btn:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+}
+/* “保存修改”主按钮 */
+html.light .settings-save-btn {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+html.light .settings-save-btn:hover {
+  background-color: #000000 !important;
+}
+/* 侧边栏会话时间颜色适配 */
+html.light .session-time {
+  color: #64748b !important;
+}
+html.light .sidebar-session-item[data-active="true"] .session-time {
+  color: #475569 !important;
+  font-weight: 500 !important;
+}
+
+/* ================= ContextMeter Token 用量弹层与胶囊浅色模式适配 ================= */
+html.light .context-meter-btn {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+html.light .context-meter-btn:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+html.light .context-meter-dialog {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+html.light .context-meter-dialog .text-zinc-200,
+html.light .context-meter-dialog .text-zinc-300 {
+  color: #0f172a !important;
+}
+html.light .context-meter-dialog .text-zinc-400 {
+  color: #64748b !important;
+}
+html.light .context-meter-dialog .bg-zinc-800\/80 {
+  background-color: #e2e8f0 !important;
+}
+html.light .context-meter-dialog .border-zinc-800\/70 {
+  border-color: #e2e8f0 !important;
+}
+
+/* ================= StatsLine 底栏统计条浅色模式适配 ================= */
+html.light .stats-line {
+  color: #64748b !important;
+}
+html.light .stats-line .text-zinc-700 {
+  color: #cbd5e1 !important;
+}
+
+/* ================= Review 侧边栏与 Tab 栏浅色模式适配 ================= */
+html.light aside.review-sidebar,
+html.light aside[style*="width"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+html.light .review-tab-bar,
+html.light aside .bg-zinc-950 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+html.light aside .bg-zinc-900 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+html.light aside select {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light aside input[type="text"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light aside input[type="text"]::placeholder {
+  color: #94a3b8 !important;
+}
+html.light aside textarea {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+

@@ -1,0 +1,4 @@
+# Microsoft Agent Framework (MAF) 项目简介
+这是一个基于 .NET 10 与 MAF Harness 官方框架构建的智能体工作台系统。
+支持多盘文件读写、任务清单分解、模式切换与后台子智能体协同。
+当前版本：1.0.0

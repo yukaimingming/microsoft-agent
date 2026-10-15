@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- MAF 1.22 的内置文件能力（FileAccessProvider/FileSystemAgentFileStore）是实验性 API，
+         编译期报 MAAI001；在此取消该诊断 -->
+    <NoWarn>MAAI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.22.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Harness" Version="1.22.0" />
+    <PackageReference Include="Microsoft.Agents.AI.MCP" Version="1.22.0-alpha.260918.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.22.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Tools.Shell" Version="1.22.0-preview.260918.1" />
+    <PackageReference Include="PdfPig" Version="0.1.9" />
+  </ItemGroup>
+
+</Project>

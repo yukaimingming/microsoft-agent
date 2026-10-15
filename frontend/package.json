@@ -1,0 +1,30 @@
+{
+  "name": "deepagent-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "本地 DeepAgent 智能体工作台：Deep Agents SDK + AG-UI 协议 + React 前端",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:web": "pnpm --filter @deepagent/web dev",
+    "dev:server": "pnpm --filter @deepagent/server dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "vitest run --dir tests",
+    "test:e2e": "node scripts/e2e-browser-check.mjs",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm -r test && pnpm build"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/ws": "^8.18.2",
+    "eslint": "^9.39.4",
+    "jsdom": "^30.1.2",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^4.1.11",
+    "ws": "^8.22.0"
+  }
+}
