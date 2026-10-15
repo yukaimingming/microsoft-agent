@@ -370,8 +370,14 @@ public sealed class ProviderConfig
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "openai-compatible";
+
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = string.Empty;
 
     [JsonPropertyName("baseUrl")]
     public string BaseUrl { get; set; } = string.Empty;
@@ -380,13 +386,22 @@ public sealed class ProviderConfig
     public string ApiKey { get; set; } = string.Empty;
 
     [JsonPropertyName("defaultModel")]
-    public string DefaultModel { get; set; } = string.Empty;
+    public string? DefaultModel { get; set; }
 
     [JsonPropertyName("models")]
     public List<string> Models { get; set; } = [];
 
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
+
+    [JsonPropertyName("reasoning")]
+    public object? Reasoning { get; set; }
+
+    [JsonPropertyName("createdAt")]
+    public string CreatedAt { get; set; } = DateTime.UtcNow.ToString("o");
+
+    [JsonPropertyName("updatedAt")]
+    public string UpdatedAt { get; set; } = DateTime.UtcNow.ToString("o");
 }
 
 public sealed class PublicProvider
@@ -394,14 +409,20 @@ public sealed class PublicProvider
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "openai-compatible";
+
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = string.Empty;
 
     [JsonPropertyName("baseUrl")]
     public string BaseUrl { get; set; } = string.Empty;
 
     [JsonPropertyName("defaultModel")]
-    public string DefaultModel { get; set; } = string.Empty;
+    public string? DefaultModel { get; set; }
 
     [JsonPropertyName("models")]
     public List<string> Models { get; set; } = [];
@@ -412,14 +433,35 @@ public sealed class PublicProvider
     [JsonPropertyName("hasApiKey")]
     public bool HasApiKey { get; set; }
 
+    [JsonPropertyName("apiKeyMask")]
+    public string ApiKeyMask { get; set; } = string.Empty;
+
     [JsonPropertyName("apiKeyMasked")]
     public string ApiKeyMasked { get; set; } = string.Empty;
+
+    [JsonPropertyName("reasoning")]
+    public object? Reasoning { get; set; }
+
+    [JsonPropertyName("createdAt")]
+    public string CreatedAt { get; set; } = DateTime.UtcNow.ToString("o");
+
+    [JsonPropertyName("updatedAt")]
+    public string UpdatedAt { get; set; } = DateTime.UtcNow.ToString("o");
 }
 
 public sealed class ProviderInput
 {
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
     [JsonPropertyName("name")]
     public string? Name { get; set; }
+
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
 
     [JsonPropertyName("baseUrl")]
     public string? BaseUrl { get; set; }
@@ -435,6 +477,48 @@ public sealed class ProviderInput
 
     [JsonPropertyName("enabled")]
     public bool? Enabled { get; set; }
+
+    [JsonPropertyName("reasoning")]
+    public object? Reasoning { get; set; }
+}
+
+public sealed class BrowseFolderItem
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+}
+
+public sealed class BrowseQuickPath
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+}
+
+public sealed class BrowseResultDto
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; } = true;
+
+    [JsonPropertyName("current")]
+    public string Current { get; set; } = string.Empty;
+
+    [JsonPropertyName("parent")]
+    public string? Parent { get; set; }
+
+    [JsonPropertyName("folders")]
+    public List<BrowseFolderItem> Folders { get; set; } = [];
+
+    [JsonPropertyName("quickPaths")]
+    public List<BrowseQuickPath> QuickPaths { get; set; } = [];
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
 }
 
 public sealed class WorkbenchIndex

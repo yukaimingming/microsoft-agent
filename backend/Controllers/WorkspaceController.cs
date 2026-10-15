@@ -61,31 +61,27 @@ public sealed class WorkspaceController : ControllerBase
         body.TryGetValue("parentDir", out var parentDir);
         if (!body.TryGetValue("dirName", out var dirName) || string.IsNullOrWhiteSpace(dirName))
         {
-            return BadRequest(new { error = "缺少文件夹名称" });
+            return BadRequest(new { ok = false, error = "缺少文件夹名称" });
         }
 
         try
         {
             _workspaceService.Mkdir(parentDir, dirName);
+            var parent = string.IsNullOrWhiteSpace(parentDir) ? _workspaceService.CurrentWorkspaceRoot : Path.GetFullPath(parentDir);
+            var createdPath = Path.Combine(parent, dirName.Trim());
             var tree = _workspaceService.GetWorkspaceTree(_workspaceService.CurrentWorkspaceRoot, 3);
-            return Ok(new { ok = true, nodes = tree });
+            return Ok(new { ok = true, createdPath, nodes = tree });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = "创建文件夹失败: " + ex.Message });
+            return StatusCode(500, new { ok = false, error = "创建文件夹失败: " + ex.Message });
         }
     }
 
     [HttpGet("browse")]
     public IActionResult Browse([FromQuery] string? path)
     {
-        var target = !string.IsNullOrWhiteSpace(path) ? path : _workspaceService.CurrentWorkspaceRoot;
-        var entries = _workspaceService.BrowseDirectory(target);
-        return Ok(new
-        {
-            ok = true,
-            currentPath = target,
-            entries
-        });
+        var result = _workspaceService.Browse(path);
+        return Ok(result);
     }
 }

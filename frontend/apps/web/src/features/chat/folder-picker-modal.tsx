@@ -71,7 +71,7 @@ export function FolderPickerModal({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const url = new URL("http://127.0.0.1:8787/api/workspace/browse");
+      const url = new URL("/api/workspace/browse", window.location.origin);
       if (path && path.trim()) {
         url.searchParams.set("path", path.trim());
       }
@@ -107,7 +107,7 @@ export function FolderPickerModal({
     const trimmed = newDirName.trim();
     if (!trimmed || !currentPath) return;
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/workspace/mkdir", {
+      const res = await fetch("/api/workspace/mkdir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parentDir: currentPath, dirName: trimmed }),

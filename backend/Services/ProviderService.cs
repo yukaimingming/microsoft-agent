@@ -26,7 +26,9 @@ public sealed class ProviderService
             _providers.Add(new ProviderConfig
             {
                 Id = "atria-default",
+                Type = "openai-compatible",
                 Name = "Atria (官方预设)",
+                Label = "Atria (官方预设)",
                 BaseUrl = defaultUrl,
                 ApiKey = defaultKey,
                 DefaultModel = defaultModel,
@@ -34,6 +36,25 @@ public sealed class ProviderService
                 Enabled = true
             });
             Save();
+        }
+        else
+        {
+            // 修复历史数据可能缺失 Label 的问题
+            bool updated = false;
+            foreach (var p in _providers)
+            {
+                if (string.IsNullOrWhiteSpace(p.Label) && !string.IsNullOrWhiteSpace(p.Name))
+                {
+                    p.Label = p.Name;
+                    updated = true;
+                }
+                else if (string.IsNullOrWhiteSpace(p.Name) && !string.IsNullOrWhiteSpace(p.Label))
+                {
+                    p.Name = p.Label;
+                    updated = true;
+                }
+            }
+            if (updated) Save();
         }
     }
 
@@ -54,15 +75,21 @@ public sealed class ProviderService
     public ProviderConfig Create(ProviderInput input)
     {
         var id = "p-" + Guid.NewGuid().ToString("N")[..8];
+        var displayName = input.Label ?? input.Name ?? "自定义提供商";
         var config = new ProviderConfig
         {
             Id = id,
-            Name = input.Name ?? "自定义提供商",
+            Type = input.Type ?? "openai-compatible",
+            Name = displayName,
+            Label = displayName,
             BaseUrl = input.BaseUrl ?? "https://api.openai.com/v1",
             ApiKey = input.ApiKey ?? string.Empty,
             DefaultModel = input.DefaultModel ?? "gpt-4o",
-            Models = input.Models ?? [input.DefaultModel ?? "gpt-4o"],
-            Enabled = input.Enabled ?? true
+            Models = input.Models ?? (input.DefaultModel != null ? [input.DefaultModel] : ["gpt-4o"]),
+            Enabled = input.Enabled ?? true,
+            Reasoning = input.Reasoning,
+            CreatedAt = DateTime.UtcNow.ToString("o"),
+            UpdatedAt = DateTime.UtcNow.ToString("o")
         };
         _providers.Add(config);
         Save();
@@ -74,12 +101,20 @@ public sealed class ProviderService
         var p = Get(id);
         if (p == null) return null;
 
-        if (input.Name != null) p.Name = input.Name;
+        var displayName = input.Label ?? input.Name;
+        if (displayName != null)
+        {
+            p.Label = displayName;
+            p.Name = displayName;
+        }
+        if (input.Type != null) p.Type = input.Type;
         if (input.BaseUrl != null) p.BaseUrl = input.BaseUrl;
         if (input.ApiKey != null) p.ApiKey = input.ApiKey;
         if (input.DefaultModel != null) p.DefaultModel = input.DefaultModel;
         if (input.Models != null) p.Models = input.Models;
         if (input.Enabled.HasValue) p.Enabled = input.Enabled.Value;
+        if (input.Reasoning != null) p.Reasoning = input.Reasoning;
+        p.UpdatedAt = DateTime.UtcNow.ToString("o");
 
         Save();
         return p;
@@ -120,10 +155,35 @@ public sealed class ProviderService
                     {
                         if (item.TryGetProperty("id", out var idProp))
                         {
-                            models.Add(idProp.GetString() ?? "");
+                            var modelName = idProp.GetString();
+                            if (!string.IsNullOrWhiteSpace(modelName))
+                            {
+                                models.Add(modelName);
+                            }
                         }
                     }
                 }
+
+                // 关键点：获取模型成功后，自动合并保存至当前提供商，使得输入框和全局列表立即生效！
+                if (models.Count > 0)
+                {
+                    var merged = new List<string>(provider.Models);
+                    foreach (var m in models)
+                    {
+                        if (!string.IsNullOrWhiteSpace(m) && !merged.Contains(m))
+                        {
+                            merged.Add(m);
+                        }
+                    }
+                    provider.Models = merged;
+                    if (string.IsNullOrWhiteSpace(provider.DefaultModel) || !merged.Contains(provider.DefaultModel))
+                    {
+                        provider.DefaultModel = merged.FirstOrDefault() ?? string.Empty;
+                    }
+                    provider.UpdatedAt = DateTime.UtcNow.ToString("o");
+                    Save();
+                }
+
                 result["ok"] = true;
                 result["models"] = models;
                 return result;
@@ -170,7 +230,7 @@ public sealed class ProviderService
                 {
                     ["ok"] = true,
                     ["latencyMs"] = duration,
-                    ["model"] = model
+                    ["model"] = model ?? string.Empty
                 };
             }
 
@@ -200,16 +260,26 @@ public sealed class ProviderService
                 ? p.ApiKey[..4] + "••••" + p.ApiKey[^4..]
                 : "••••";
 
+        var label = !string.IsNullOrWhiteSpace(p.Label)
+            ? p.Label
+            : (!string.IsNullOrWhiteSpace(p.Name) ? p.Name : "自定义提供商");
+
         return new PublicProvider
         {
             Id = p.Id,
-            Name = p.Name,
+            Type = string.IsNullOrWhiteSpace(p.Type) ? "openai-compatible" : p.Type,
+            Name = label,
+            Label = label,
             BaseUrl = p.BaseUrl,
             DefaultModel = p.DefaultModel,
             Models = p.Models,
             Enabled = p.Enabled,
             HasApiKey = !string.IsNullOrWhiteSpace(p.ApiKey),
-            ApiKeyMasked = masked
+            ApiKeyMask = masked,
+            ApiKeyMasked = masked,
+            Reasoning = p.Reasoning,
+            CreatedAt = p.CreatedAt,
+            UpdatedAt = p.UpdatedAt
         };
     }
 

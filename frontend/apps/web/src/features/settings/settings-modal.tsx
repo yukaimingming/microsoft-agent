@@ -177,10 +177,8 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
     const result = await props.onSave(draft);
     setSaving(false);
     if (result.ok) {
-      setNotice(isEditing ? "配置已成功更新" : "新厂商配置已成功保存");
+      setNotice(isEditing ? "厂商配置已成功保存！输入框模型列表已同步。" : "新厂商配置已成功保存！输入框模型列表已同步。");
       setDraft({ ...draft, apiKey: "" });
-      // Key/配置变更后自动刷新一次模型列表（AGENTS.md 9.2：填写 Base URL
-      // 和 Key 后在可安全获取时自动刷新）。失败不阻断保存流程。
       if (draft.id) {
         void handleFetchModels();
       }
@@ -210,12 +208,16 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
     }
     // 自动将获取到的所有模型批量添加到列表
     const merged = Array.from(new Set([...draft.models, ...result.models]));
-    setDraft({
+    const nextDraft = {
       ...draft,
       models: merged,
       defaultModel: draft.defaultModel ?? result.models[0] ?? null,
-    });
-    setNotice(`成功获取到 ${result.models.length} 个模型并全部导入列表`);
+    };
+    setDraft(nextDraft);
+    if (draft.id) {
+      await props.onSave(nextDraft);
+    }
+    setNotice(`已成功获取 ${result.models.length} 个模型并自动保存！输入框模型列表已同步。`);
   };
 
   // Base URL 变更后防抖自动获取模型列表：仅对已保存厂商生效（服务端用
@@ -468,6 +470,18 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
           )}
         </div>
 
+        {notice && (
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-950/60 p-2.5 text-[12px] text-emerald-300 shadow-sm">
+            <CheckIcon className="size-4 shrink-0 text-emerald-400" />
+            <span className="font-medium">{notice}</span>
+          </div>
+        )}
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-950/60 p-2.5 text-[12px] text-rose-300 shadow-sm">
+            <span className="font-medium">{error}</span>
+          </div>
+        )}
+
         {/* 厂商名称与协议类型 */}
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
@@ -691,6 +705,19 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
           {twoTierHint && <p className="text-[11px] text-amber-400">{twoTierHint}</p>}
         </div>
 
+        {/* 反馈提示：提升到操作栏上方，始终显眼可见 */}
+        {notice && (
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-950/70 p-2.5 text-[12px] text-emerald-300 shadow-md">
+            <CheckIcon className="size-4 shrink-0 text-emerald-400" />
+            <span className="font-semibold">{notice}</span>
+          </div>
+        )}
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-950/70 p-2.5 text-[12px] text-rose-300 shadow-md">
+            <span className="font-medium">{error}</span>
+          </div>
+        )}
+
         {/* 底部启用状态与保存/测试按钮 */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
           <label className="flex items-center gap-2 text-[12.5px] text-zinc-300 cursor-pointer">
@@ -704,6 +731,11 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
           </label>
 
           <div className="flex items-center gap-2">
+            {notice && (
+              <span className="text-[11.5px] text-emerald-400 font-medium flex items-center gap-1 mr-1">
+                <CheckIcon className="size-3.5" /> 已生效
+              </span>
+            )}
             <button
               type="button"
               onClick={() => void handleTest()}
@@ -724,18 +756,6 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
             </button>
           </div>
         </div>
-
-        {/* 反馈提示 */}
-        {error && (
-          <div className="rounded border border-rose-900 bg-rose-950/50 p-2 text-[12px] text-rose-300">
-            {error}
-          </div>
-        )}
-        {notice && (
-          <div className="rounded border border-emerald-900 bg-emerald-950/50 p-2 text-[12px] text-emerald-300">
-            {notice}
-          </div>
-        )}
         {testResult && (
           <div
             className={`rounded border p-2 text-[12px] ${

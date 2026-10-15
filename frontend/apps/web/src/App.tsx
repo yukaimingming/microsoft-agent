@@ -367,7 +367,7 @@ export function App() {
       const trimmed = pickedPath.trim();
       if (!trimmed) return;
       try {
-        await fetch("http://127.0.0.1:8787/api/workspace/select", {
+        await fetch("/api/workspace/select", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ path: trimmed }),
