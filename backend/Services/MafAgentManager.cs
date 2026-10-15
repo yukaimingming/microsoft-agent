@@ -78,13 +78,33 @@ public sealed class MafAgentManager
 
         try
         {
-            // 1. 初始化文件存储
-            var fileAccess = _configuration.GetSection(FileAccessOptions.SectionName).Get<FileAccessOptions>() ?? new FileAccessOptions();
-            var fileStore = new MultiDriveFileStore(fileAccess.DefaultDrive);
-            fileStore.FileChanged += change =>
-            {
-                _ = adapter.RecordFileChangedAsync(change.Path, change.Before, change.After);
-            };
+        // 1. 初始化文件存储与权限审核模式
+        var permissionMode = forwardedProps.TryGetValue("permissionMode", out var pmObj) && pmObj is not null
+            ? pmObj.ToString()?.ToLowerInvariant()
+            : "ask";
+
+        var fileAccess = _configuration.GetSection(FileAccessOptions.SectionName).Get<FileAccessOptions>() ?? new FileAccessOptions();
+        if (permissionMode == "full")
+        {
+            fileAccess.DisableWriteToolApproval = true;
+            fileAccess.DisableReadOnlyToolApproval = true;
+        }
+        else if (permissionMode == "auto")
+        {
+            fileAccess.DisableWriteToolApproval = true;
+            fileAccess.DisableReadOnlyToolApproval = true;
+        }
+        else // ask: 写入与命令执行必须人工确认审批
+        {
+            fileAccess.DisableWriteToolApproval = false;
+            fileAccess.DisableReadOnlyToolApproval = true;
+        }
+
+        var fileStore = new MultiDriveFileStore(fileAccess.DefaultDrive);
+        fileStore.FileChanged += change =>
+        {
+            _ = adapter.RecordFileChangedAsync(change.Path, change.Before, change.After);
+        };
 
             // 2. 联网搜索（Exa MCP）
             var webSearch = _configuration.GetSection(WebSearchOptions.SectionName).Get<WebSearchOptions>() ?? new WebSearchOptions();

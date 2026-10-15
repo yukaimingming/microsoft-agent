@@ -160,3 +160,25 @@ pnpm --filter @deepagent/web dev --host 127.0.0.1 --port 5175
 | `POST` | `/api/git/commit` | 提交代码变更 |
 | `GET` | `/api/git/file-content` | 读取文件文本内容 |
 | `POST` | `/api/git/terminal` | 执行交互式终端 PowerShell 命令 |
+
+---
+
+## 7. 全功能测试与验证截图清单
+
+项目配备完整的端到端自动化测试脚本，全面覆盖主面板建议提示词、权限选择、人工审批（HITL）以及整个 Agent 内所有功能：
+
+| 截图编号与文件名 | 测试场景与验证能力 | 核心功能说明 |
+| :--- | :--- | :--- |
+| **01-home-8-capabilities.png** | **主面板 8 大内置能力** | 纯净状态居中呈现 8 大核心建议卡片，模型状态显示 `Atria-Dawn-Preview` |
+| **02-permission-mode-selector.png** | **权限模式选择器** | 验证三种审核策略（`请求批准` / `帮我批准` / `完全访问权限`）切换正常 |
+| **03-approval-hitl-intercept.png** | **敏感操作人工审批拦截** | 执行命令或修改时触发 `ToolApprovalRequestContent`，弹起批准/拒绝拦截卡片 |
+| **04-approval-resumed-success.png** | **人工审批恢复与执行完成** | 点击批准后调用 `resume` 恢复执行，任务顺利完成并生成输出 |
+| **05-todos-loop-execution.png** | **待办清单与自治循环** | `todos_*` 拆解任务清单，自动循环评估与推进标记 |
+| **06-multidrive-diff-viewer.png** | **多盘读写与行级 Diff** | `file_access_*` 读写替换并生成红绿相间的行级差异卡片 |
+| **07-subagents-and-memory.png** | **子智能体与长期记忆** | `file_memory_*` 事实抽取，检索跨会话记忆与子智能体委派 |
+| **08-review-git-diff-terminal.png** | **代码审查与 PowerShell 终端** | 右侧 Review 模块、文件代码查看器与 Windows PowerShell 交互控制台 |
+
+自动化测试执行方式：
+```bash
+node scripts/comprehensive-test-and-capture.cjs
+```
