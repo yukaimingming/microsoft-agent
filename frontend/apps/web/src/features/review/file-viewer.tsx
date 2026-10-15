@@ -7,7 +7,7 @@ interface FileViewerProps {
 }
 
 export function FileViewer({ initialPath, workspaceRoot }: FileViewerProps) {
-  const [filePath, setFilePath] = useState(initialPath || "backend/src/main/java/com/agentscope/harness/controller/GitController.java");
+  const [filePath, setFilePath] = useState(initialPath || "backend/Controllers/AgentController.cs");
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

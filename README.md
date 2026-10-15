@@ -12,13 +12,13 @@
 flowchart TD
     subgraph 前端 ["现代 Web UI (React 19 + AI Elements)"]
         UI["聊天与活动时间线界面"]
-        ViteProxy["Vite 本地代理 (:5174)"]
+        ViteProxy["Vite 本地代理 (:5175)"]
         AguiClient["@ag-ui/client 运行时"]
         UI --> AguiClient
         AguiClient --> ViteProxy
     end
 
-    subgraph 后端 [".NET 10 WebAPI + MAF Harness (:8787)"]
+    subgraph 后端 [".NET 10 WebAPI + MAF Harness (:8788)"]
         AgentController["AgentController (POST /agent SSE)"]
         RestControllers["REST API (工作区 / 模型管理 / 会话索引 / Git审查)"]
         AguiAdapter["AguiStreamAdapter (事件流适配与Diff计算)"]
@@ -106,9 +106,9 @@ flowchart TD
 ### 5.1 一键启动（Windows）
 
 双击根目录下的 `run.cmd` 或运行 `run.ps1`：
-- 自动检测环境并启动 .NET 10 WebAPI 后端服务（`http://127.0.0.1:8787`）；
-- 启动前端 Vite 开发服务器（`http://127.0.0.1:5174`）；
-- 浏览器访问 `http://127.0.0.1:5174` 即可使用。
+- 自动检测环境并启动 .NET 10 WebAPI 后端服务（`http://127.0.0.1:8788`）；
+- 启动前端 Vite 开发服务器（`http://127.0.0.1:5175`）；
+- 浏览器访问 `http://127.0.0.1:5175` 即可使用。
 
 ```cmd
 run.cmd
@@ -122,16 +122,16 @@ run.cmd
 cd backend
 dotnet run
 ```
-后端服务端口为 `8787`，健康检查地址为 `http://127.0.0.1:8787/api/health`。
+后端服务端口为 `8788`，健康检查地址为 `http://127.0.0.1:8788/api/health`。
 
 #### 终端 2：启动 Web 前端
 
 ```bash
 cd frontend
 pnpm install
-pnpm --filter @deepagent/web dev --host 127.0.0.1 --port 5174
+pnpm --filter @deepagent/web dev --host 127.0.0.1 --port 5175
 ```
-浏览器访问：`http://127.0.0.1:5174`。
+浏览器访问：`http://127.0.0.1:5175`。
 
 ---
 

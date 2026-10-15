@@ -11,7 +11,7 @@ interface OutputEntry {
 }
 
 export function TerminalView({ workspaceRoot }: TerminalViewProps) {
-  const currentCwd = workspaceRoot || "D:\\temp\\agentscope-harness";
+  const currentCwd = workspaceRoot || "D:\\temp\\Microsoft agent";
   const [outputLines, setOutputLines] = useState<OutputEntry[]>([
     {
       type: "banner",

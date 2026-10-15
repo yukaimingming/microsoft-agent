@@ -73,7 +73,7 @@ export function App() {
   // 侧边栏折叠/展开
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem("agentscope_sidebar_open");
+      const saved = localStorage.getItem("maf_sidebar_open");
       return saved !== null ? saved === "true" : true;
     } catch {
       return true;
@@ -84,7 +84,7 @@ export function App() {
     setIsSidebarOpen((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem("agentscope_sidebar_open", String(next));
+        localStorage.setItem("maf_sidebar_open", String(next));
       } catch {
         // 忽略
       }
@@ -95,7 +95,7 @@ export function App() {
   // 右侧代码审查侧边栏折叠/展开（支持记忆状态）
   const [isReviewOpen, setIsReviewOpen] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem("agentscope_review_open");
+      const saved = localStorage.getItem("maf_review_open");
       return saved !== null ? saved === "true" : true;
     } catch {
       return true;
@@ -106,7 +106,7 @@ export function App() {
     setIsReviewOpen((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem("agentscope_review_open", String(next));
+        localStorage.setItem("maf_review_open", String(next));
       } catch {
         // 忽略
       }
@@ -117,7 +117,7 @@ export function App() {
   /** 当前工作区目录。若为 null 则表示单纯不在工作区的直接聊天模式。 */
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(() => {
     try {
-      const saved = localStorage.getItem("agentscope_current_workspace_v1");
+      const saved = localStorage.getItem("maf_current_workspace_v1");
       if (saved !== null) {
         return saved === "DIRECT_CHAT" ? null : saved;
       }
@@ -131,9 +131,9 @@ export function App() {
   useEffect(() => {
     try {
       if (workspaceRoot === null || workspaceRoot.trim() === "") {
-        localStorage.setItem("agentscope_current_workspace_v1", "DIRECT_CHAT");
+        localStorage.setItem("maf_current_workspace_v1", "DIRECT_CHAT");
       } else {
-        localStorage.setItem("agentscope_current_workspace_v1", workspaceRoot);
+        localStorage.setItem("maf_current_workspace_v1", workspaceRoot);
       }
     } catch {
       // 忽略
@@ -270,7 +270,7 @@ export function App() {
 
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
     try {
-      const saved = localStorage.getItem("agentscope_permission_mode");
+      const saved = localStorage.getItem("maf_permission_mode");
       return PERMISSION_MODES.find((mode) => mode === saved) ?? DEFAULT_PERMISSION_MODE;
     } catch {
       return DEFAULT_PERMISSION_MODE;
@@ -279,7 +279,7 @@ export function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("agentscope_permission_mode", permissionMode);
+      localStorage.setItem("maf_permission_mode", permissionMode);
     } catch {
       // 浏览器禁用本地存储时，权限模式仍在当前页面会话内生效。
     }

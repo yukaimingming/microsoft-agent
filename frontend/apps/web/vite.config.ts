@@ -12,27 +12,27 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5174,
+    port: 5175,
     // 本地开发：前端只连本机服务端，不开局域网访问。
     host: "127.0.0.1",
     proxy: {
       // 服务端 API 与 AG-UI 端点都通过代理转发，避免 CORS 与端口硬编码。
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: "http://127.0.0.1:8788",
         changeOrigin: false,
       },
       "/agent": {
-        target: "http://127.0.0.1:8787",
+        target: "http://127.0.0.1:8788",
         changeOrigin: false,
       },
     },
   },
   preview: {
-    port: 5175,
+    port: 5176,
     host: "127.0.0.1",
     proxy: {
-      "/api": { target: "http://127.0.0.1:8787", changeOrigin: false },
-      "/agent": { target: "http://127.0.0.1:8787", changeOrigin: false },
+      "/api": { target: "http://127.0.0.1:8788", changeOrigin: false },
+      "/agent": { target: "http://127.0.0.1:8788", changeOrigin: false },
     },
   },
   build: {

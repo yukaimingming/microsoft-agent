@@ -11,9 +11,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientState } from "./client-reducer.js";
 
-const SESSIONS_STORAGE_KEY = "agentscope_sessions_list_v1";
-const WORKSPACES_STORAGE_KEY = "agentscope_workspaces_list_v1";
-const SESSION_STATE_PREFIX = "agentscope_session_state_";
+const SESSIONS_STORAGE_KEY = "maf_sessions_list_v1";
+const WORKSPACES_STORAGE_KEY = "maf_workspaces_list_v1";
+const SESSION_STATE_PREFIX = "maf_session_state_";
 
 export interface SessionSummary {
   id: string;

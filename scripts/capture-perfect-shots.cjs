@@ -21,8 +21,12 @@ const fs = require('fs');
 
   const page = await context.newPage();
 
-  console.log('1. 正在访问前端并重置为空白新会话...');
-  await page.goto('http://127.0.0.1:5174', { waitUntil: 'networkidle' });
+  console.log('1. 正在访问前端 (http://127.0.0.1:5175) 并重置为空白新会话...');
+  await page.goto('http://127.0.0.1:5175', { waitUntil: 'networkidle' });
+  await page.evaluate(() => {
+    localStorage.clear();
+  });
+  await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
 
   // 确保右侧 Review 边栏关闭，使得主聊天/建议词居中完整展示
@@ -90,22 +94,18 @@ const fs = require('fs');
   console.log('✅ 截图 3 完成 (思考流与工具卡片): ' + shot3);
 
   // 截图 4: 打开代码审查 (Review) 与 PowerShell 交互式终端
-  console.log('4. 展开代码审查侧边栏与终端...');
-  if (await reviewToggle.count() > 0) {
-    await reviewToggle.click();
+  console.log('4. 激活右侧 PowerShell 终端并执行命令...');
+  const terminalBtn = page.locator('button:has-text("Terminal")').first();
+  if (await terminalBtn.count() > 0) {
+    await terminalBtn.click();
     await page.waitForTimeout(800);
   }
 
-  const terminalTab = page.locator('button:has-text("终端")').first();
-  if (await terminalTab.count() > 0) {
-    await terminalTab.click();
-    await page.waitForTimeout(600);
-    const terminalInput = page.locator('input[placeholder*="命令"]').first();
-    if (await terminalInput.count() > 0) {
-      await terminalInput.fill('Get-Process -Name MafHarness*');
-      await terminalInput.press('Enter');
-      await page.waitForTimeout(2000);
-    }
+  const terminalInput = page.locator('input[placeholder*="PowerShell"], input[placeholder*="命令"]').first();
+  if (await terminalInput.count() > 0) {
+    await terminalInput.fill('Get-Process -Name MafHarness*');
+    await terminalInput.press('Enter');
+    await page.waitForTimeout(2000);
   }
 
   const shot4 = path.join(screenshotsDir, '04-maf-review-and-terminal.png');
