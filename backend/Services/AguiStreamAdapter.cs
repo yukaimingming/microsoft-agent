@@ -109,40 +109,66 @@ public sealed class AguiStreamAdapter
     {
         if (string.IsNullOrWhiteSpace(line)) return;
 
-        // 作为过程消息推送到前端时间线
-        var reflectionMsgId = "msg-reflection-" + Guid.NewGuid();
-        await EmitJsonAsync(new Dictionary<string, object?>
+        // 作为过程活动推送到前端时间线（绝不作为文本消息去抢占正文槽位）
+        var refId = "reflection:" + Guid.NewGuid().ToString("N")[..8];
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var refActivity = new Activity(
+            refId,
+            "tool",
+            "completed",
+            "反思裁判评估",
+            now)
         {
-            ["type"] = AguiEventType.TEXT_MESSAGE_START,
-            ["messageId"] = reflectionMsgId,
-            ["role"] = "assistant"
-        });
-        await EmitJsonAsync(new Dictionary<string, object?>
-        {
-            ["type"] = AguiEventType.TEXT_MESSAGE_CONTENT,
-            ["messageId"] = reflectionMsgId,
-            ["delta"] = line
-        });
-        await EmitJsonAsync(new Dictionary<string, object?>
-        {
-            ["type"] = AguiEventType.TEXT_MESSAGE_END,
-            ["messageId"] = reflectionMsgId
-        });
-        await EmitJsonAsync(new Dictionary<string, object?>
-        {
-            ["type"] = AguiEventType.CUSTOM,
-            ["name"] = AguiEventType.CUSTOM_PROCESS_MESSAGE,
-            ["value"] = new Dictionary<string, object?>
+            RunId = _runId,
+            Subtitle = line,
+            EndedAt = now,
+            DurationMs = 5,
+            Detail = new ToolDetail("reflection_judge", new Dictionary<string, object?> { ["result"] = line })
             {
-                ["messageId"] = reflectionMsgId,
-                ["runId"] = _runId
+                Output = line
             }
-        });
+        };
+        _activities[refId] = refActivity;
+        await EmitActivityAsync(refActivity);
     }
 
     public async Task RecordFileChangedAsync(string path, string? before, string after)
     {
         var fileDiff = CalculateDiff(path, before, after);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        // 优先复用当前正在 running 的文件工具活动，注入 Diff 并更新完成状态，杜绝产生孤立 running 卡片
+        var matchingActivity = _activities.Values.FirstOrDefault(a =>
+            a.Kind == "file" &&
+            (a.Status == "running" || a.EndedAt == 0) &&
+            (string.IsNullOrEmpty(a.Subtitle) ||
+             a.Subtitle.Equals(path, StringComparison.OrdinalIgnoreCase) ||
+             a.Subtitle.EndsWith(Path.GetFileName(path), StringComparison.OrdinalIgnoreCase)));
+
+        if (matchingActivity != null)
+        {
+            matchingActivity.Status = "completed";
+            matchingActivity.Title = (before == null ? "新建" : "修改") + " · " + Path.GetFileName(path);
+            matchingActivity.Subtitle = path;
+            matchingActivity.EndedAt = now;
+            matchingActivity.DurationMs = Math.Max(10, now - matchingActivity.StartedAt);
+            if (matchingActivity.Detail is FileDetail fd)
+            {
+                fd.Diff = fileDiff;
+                fd.Operation = before == null ? "write" : "edit";
+                fd.Path = path;
+            }
+            else
+            {
+                matchingActivity.Detail = new FileDetail(path, before == null ? "write" : "edit")
+                {
+                    Diff = fileDiff
+                };
+            }
+            await EmitActivityAsync(matchingActivity);
+            return;
+        }
+
         var callId = Guid.NewGuid().ToString("N")[..8];
         var fileActivityId = "file:" + callId;
         var fileActivity = new Activity(
@@ -150,11 +176,11 @@ public sealed class AguiStreamAdapter
             "file",
             "completed",
             (before == null ? "新建" : "修改") + " · " + Path.GetFileName(path),
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+            now)
         {
             RunId = _runId,
             Subtitle = path,
-            EndedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            EndedAt = now,
             DurationMs = 10,
             Detail = new FileDetail(path, before == null ? "write" : "edit")
             {
@@ -181,8 +207,16 @@ public sealed class AguiStreamAdapter
         }
     }
 
+    private bool _inThinkingTag;
+
     private async Task HandleReasoningDeltaAsync(string delta)
     {
+        // 若当前正文流已在输出且未被工具中断，则忽略正文中途零星的思考流重入，避免正文闪跳回思考链
+        if (_openTextId != null)
+        {
+            return;
+        }
+
         if (_openReasoningId == null)
         {
             await StartReasoningAsync();
@@ -226,6 +260,52 @@ public sealed class AguiStreamAdapter
     }
 
     private async Task HandleTextDeltaAsync(string delta)
+    {
+        if (string.IsNullOrEmpty(delta))
+            return;
+
+        // 兼容模型在 TextContent 中夹带的 <think> 标签
+        if (delta.Contains("<think>"))
+        {
+            _inThinkingTag = true;
+            var parts = delta.Split("<think>", 2);
+            if (!string.IsNullOrEmpty(parts[0]))
+            {
+                await AppendTextContentAsync(parts[0]);
+            }
+            if (!string.IsNullOrEmpty(parts[1]))
+            {
+                await HandleReasoningDeltaAsync(parts[1]);
+            }
+            return;
+        }
+
+        if (_inThinkingTag)
+        {
+            if (delta.Contains("</think>"))
+            {
+                _inThinkingTag = false;
+                var parts = delta.Split("</think>", 2);
+                if (!string.IsNullOrEmpty(parts[0]))
+                {
+                    await HandleReasoningDeltaAsync(parts[0]);
+                }
+                await EndReasoningAsync();
+                if (!string.IsNullOrEmpty(parts[1]))
+                {
+                    await AppendTextContentAsync(parts[1]);
+                }
+                return;
+            }
+
+            await HandleReasoningDeltaAsync(delta);
+            return;
+        }
+
+        await AppendTextContentAsync(delta);
+    }
+
+    private async Task AppendTextContentAsync(string delta)
     {
         if (_openTextId == null && string.IsNullOrWhiteSpace(delta))
             return;
@@ -500,6 +580,18 @@ public sealed class AguiStreamAdapter
         if (_finished) return;
         _finished = true;
         await EndReasoningAsync();
+
+        // 终极正文防丢兜底：若整轮执行了工具或文件变更但模型未产生最终正文答复，自动补充结构化结果总结
+        if (string.IsNullOrWhiteSpace(_fullAnswer.ToString()))
+        {
+            var summary = BuildFallbackSummary();
+            if (!string.IsNullOrEmpty(summary))
+            {
+                await StartTextAsync();
+                await AppendTextContentAsync(summary);
+            }
+        }
+
         await EndTextAsync();
 
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -555,6 +647,41 @@ public sealed class AguiStreamAdapter
             ["threadId"] = _threadId,
             ["message"] = error ?? "未知运行错误"
         });
+    }
+
+    private string BuildFallbackSummary()
+    {
+        var fileActs = _activities.Values.Where(a => a.Kind == "file").ToList();
+        var toolActs = _activities.Values.Where(a => a.Kind == "tool" && !a.Id.StartsWith("reflection:")).ToList();
+
+        if (fileActs.Count == 0 && toolActs.Count == 0 && _todoItems.IsEmpty)
+        {
+            return "已圆满完成本次任务分析与执行。";
+        }
+
+        var sb = new StringBuilder();
+        if (fileActs.Count > 0)
+        {
+            sb.AppendLine("已成功完成工作区文件读写与行级修改操作，并生成了对应的行级 Diff 差异对比（可点击上方文件变更卡片展开查看红绿细节对比）。");
+            foreach (var fa in fileActs)
+            {
+                if (fa.Detail is FileDetail fd && fd.Diff is { } diff)
+                {
+                    sb.AppendLine($"- **{Path.GetFileName(fd.Path ?? fa.Subtitle)}**：变更统计 `+{diff.Additions} / -{diff.Deletions}` 行，操作类型：`{fd.Operation}`。");
+                }
+            }
+        }
+        else if (toolActs.Count > 0)
+        {
+            sb.AppendLine("已成功调用相关工具完成处理，系统操作已按预期生效。");
+        }
+        else if (!_todoItems.IsEmpty)
+        {
+            var completed = _todoItems.Values.Count(v => v.Done);
+            sb.AppendLine($"已规划并推进待办任务清单，当前进度：`{completed}/{_todoItems.Count}` 项已完成。");
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     private void ApplyTodoCall(string toolName, IDictionary<string, object?>? arguments)
@@ -637,28 +764,96 @@ public sealed class AguiStreamAdapter
         var additions = 0;
         var deletions = 0;
 
-        var max = Math.Max(bLines.Length, aLines.Length);
-        for (var i = 0; i < max; i++)
+        if (isCreated)
         {
-            var b = i < bLines.Length ? bLines[i] : null;
-            var a = i < aLines.Length ? aLines[i] : null;
-
-            if (b == a)
+            for (var i = 0; i < aLines.Length; i++)
             {
-                lines.Add(new FileDiff.DiffLine("normal", a ?? string.Empty, i + 1, i + 1));
+                lines.Add(new FileDiff.DiffLine("add", aLines[i], null, i + 1));
+                additions++;
             }
-            else
+        }
+        else if (string.IsNullOrEmpty(after))
+        {
+            for (var i = 0; i < bLines.Length; i++)
             {
-                if (b != null)
+                lines.Add(new FileDiff.DiffLine("delete", bLines[i], i + 1, null));
+                deletions++;
+            }
+        }
+        else
+        {
+            // 找出公共前缀
+            var prefixLen = 0;
+            while (prefixLen < bLines.Length && prefixLen < aLines.Length && bLines[prefixLen] == aLines[prefixLen])
+            {
+                lines.Add(new FileDiff.DiffLine("normal", bLines[prefixLen], prefixLen + 1, prefixLen + 1));
+                prefixLen++;
+            }
+
+            // 找出公共后缀
+            var suffixLen = 0;
+            while (suffixLen < (bLines.Length - prefixLen) &&
+                   suffixLen < (aLines.Length - prefixLen) &&
+                   bLines[bLines.Length - 1 - suffixLen] == aLines[aLines.Length - 1 - suffixLen])
+            {
+                suffixLen++;
+            }
+
+            var bMidLen = bLines.Length - prefixLen - suffixLen;
+            var aMidLen = aLines.Length - prefixLen - suffixLen;
+
+            if (bMidLen > 0 || aMidLen > 0)
+            {
+                // LCS 计算中间差异
+                var dp = new int[bMidLen + 1, aMidLen + 1];
+                for (var i = 0; i < bMidLen; i++)
                 {
-                    lines.Add(new FileDiff.DiffLine("delete", b, i + 1, null));
-                    deletions++;
+                    for (var j = 0; j < aMidLen; j++)
+                    {
+                        if (bLines[prefixLen + i] == aLines[prefixLen + j])
+                            dp[i + 1, j + 1] = dp[i, j] + 1;
+                        else
+                            dp[i + 1, j + 1] = Math.Max(dp[i + 1, j], dp[i, j + 1]);
+                    }
                 }
-                if (a != null)
+
+                // 回溯重构 diff 操作
+                var midLines = new List<FileDiff.DiffLine>();
+                var bi = bMidLen;
+                var aj = aMidLen;
+
+                while (bi > 0 || aj > 0)
                 {
-                    lines.Add(new FileDiff.DiffLine("add", a, null, i + 1));
-                    additions++;
+                    if (bi > 0 && aj > 0 && bLines[prefixLen + bi - 1] == aLines[prefixLen + aj - 1])
+                    {
+                        midLines.Add(new FileDiff.DiffLine("normal", bLines[prefixLen + bi - 1], prefixLen + bi, prefixLen + aj));
+                        bi--;
+                        aj--;
+                    }
+                    else if (aj > 0 && (bi == 0 || dp[bi, aj - 1] >= dp[bi - 1, aj]))
+                    {
+                        midLines.Add(new FileDiff.DiffLine("add", aLines[prefixLen + aj - 1], null, prefixLen + aj));
+                        additions++;
+                        aj--;
+                    }
+                    else if (bi > 0 && (aj == 0 || dp[bi, aj - 1] < dp[bi - 1, aj]))
+                    {
+                        midLines.Add(new FileDiff.DiffLine("delete", bLines[prefixLen + bi - 1], prefixLen + bi, null));
+                        deletions++;
+                        bi--;
+                    }
                 }
+
+                midLines.Reverse();
+                lines.AddRange(midLines);
+            }
+
+            // 追加公共后缀
+            for (var i = 0; i < suffixLen; i++)
+            {
+                var bIdx = bLines.Length - suffixLen + i;
+                var aIdx = aLines.Length - suffixLen + i;
+                lines.Add(new FileDiff.DiffLine("normal", bLines[bIdx], bIdx + 1, aIdx + 1));
             }
         }
 

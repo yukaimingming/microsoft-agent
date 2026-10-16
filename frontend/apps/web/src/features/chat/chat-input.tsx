@@ -397,13 +397,6 @@ export function ChatInput({
           </div>
         ) : null}
 
-        {/* DeepSeek Harness 主页面底栏统计条 (StatsLine) */}
-        <StatsLine
-          messages={messages}
-          activities={activities}
-          providedUsage={usage}
-        />
-
         <PromptInputProvider>
           {/* 纯暗黑极简边框：无任何刺眼白色外框，深邃内敛 */}
           <PromptInput
@@ -704,6 +697,15 @@ export function ChatInput({
             </p>
           )}
         </PromptInputProvider>
+
+        {/* Token 与耗时统计条：移至输入框最下方展示 */}
+        <div className="mt-2 px-1">
+          <StatsLine
+            messages={messages}
+            activities={activities}
+            providedUsage={usage}
+          />
+        </div>
       </div>
 
       <ImagePreviewDialog

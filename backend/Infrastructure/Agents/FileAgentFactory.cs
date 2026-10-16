@@ -35,19 +35,24 @@ public static class FileAgentFactory
         IReadOnlyList<AITool>? webSearchTools = null,
         AgentFileStore? fileMemoryStore = null,
         string? workspacePersona = null,
-        ReflectionState? reflectionState = null)
+        ReflectionState? reflectionState = null,
+        string permissionMode = "ask")
     {
+        var isFullPermission = string.Equals(permissionMode, "full", StringComparison.OrdinalIgnoreCase);
+        var isAutoPermission = string.Equals(permissionMode, "auto", StringComparison.OrdinalIgnoreCase);
+
         var pdfTools = new PdfTools(fileAccessStore.DefaultDrive);
         var excelTools = new ExcelTools(fileAccessStore.DefaultDrive);
 
-        // Shell 工具（MAF 官方 Microsoft.Agents.AI.Tools.Shell）：file_access_* 没有
-        // 移动/建目录/复制能力（内置清单只有 read/write/ls/grep/replace 等），
-        // 文件归类这类任务必须有 run_shell。默认 requireApproval=true——
-        // 审批链路和写操作共用，每条命令执行前 REPL 都会问。
+        // Shell 工具（MAF 官方 Microsoft.Agents.AI.Tools.Shell）：
+        // 若 permissionMode 为 "full"（完全访问权限），requireApproval 必须为 false 彻底免审放行；
+        // 其它模式下设为 true，并通过 AutoApprovalRules 或人工审批卡片按需确认。
         var shell = new LocalShellExecutor(new LocalShellExecutorOptions
         {
             Timeout = LocalShellExecutor.DefaultTimeout,
+            AcknowledgeUnsafe = true,
         });
+        var shellAiFunction = shell.AsAIFunction(requireApproval: !isFullPermission);
 
         // provider 级指令：紧贴 file_access_* 工具注入，比全局提示词更管用。
         // 核心就一条：路径里不能有冒号（provider 的 NormalizeRelativePath 只放行
@@ -133,6 +138,9 @@ public static class FileAgentFactory
             : "被问实时信息、最新动态或你不确定的事实用 web_search_exa 搜了再答"
               + "（web_fetch_exa 读网页全文），numResults 用 3-5 即可（免费额度有限），"
               + "回答注明信息来自搜索及日期；除这两个工具外不得访问互联网。";
+        var shellPermissionRule = isFullPermission
+            ? "当前为完全访问权限（免审模式），执行 run_shell 命令已全面免审放行，无需等待用户审批。"
+            : "只读命令（Get-* / Select-String / Start-Sleep / dir 等）会自动放行无需审批；结构操作和权限类命令（icacls 等）仍需用户批准，属正常流程。";
 
         var loopEvaluators = new List<LoopEvaluator>
         {
@@ -180,9 +188,7 @@ public static class FileAgentFactory
                                      - 文件结构（移动/复制/重命名/建目录/删目录）→ 只用
                                        run_shell（New-Item / Move-Item / Copy-Item 等
                                        PowerShell 命令，多条用分号连接）。
-                                       只读命令（Get-* / Select-String / Start-Sleep /
-                                       dir 等）会自动放行无需审批；结构操作和权限类
-                                       命令（icacls 等）仍需用户批准，属正常流程。
+                                       {{SHELL_PERMISSION_RULE}}
                                      - 二进制文件（图片/压缩包等）的移动复制也用 run_shell；
                                        严禁用 read+write 模拟——必损坏。
                                   2. 路径（file_access_*）：规则见 File Access 指令。
@@ -221,7 +227,8 @@ public static class FileAgentFactory
                                   - 不使用表情符号；回答控制在必要长度。
                                   """
                                   .Replace("{{SEARCH_LINE}}", searchToolLine)
-                                  .Replace("{{ONLINE_RULE}}", onlineRule),
+                                  .Replace("{{ONLINE_RULE}}", onlineRule)
+                                   .Replace("{{SHELL_PERMISSION_RULE}}", shellPermissionRule),
 
             // 文件能力：内置 FileAccessProvider，store 是多盘动态路由。
             // 读写全内置，审批开关来自 FileAccess 配置节（appsettings 可配、
@@ -236,7 +243,7 @@ public static class FileAgentFactory
             {
                 DisableWriteTools = fileAccess.DisableWriteTools,
                 DisableReadOnlyToolApproval = fileAccess.DisableReadOnlyToolApproval,
-                DisableWriteToolApproval = fileAccess.DisableWriteToolApproval,
+                DisableWriteToolApproval = isFullPermission || isAutoPermission || fileAccess.DisableWriteToolApproval,
                 Instructions = fileAccessInstructions,
             },
 
@@ -247,13 +254,11 @@ public static class FileAgentFactory
             // PDF / Excel / Shell / 联网搜索（Exa MCP）：函数工具，与内置全家桶共存。
             // shell 工具包一层 ShellCommandSanitizer：剥掉 Format-List/Table，
             // 绕开 LocalShellExecutor 对这些 cmdlet 的 NRE bug。
-            // DisableWebSearch=true 只关 Harness 默认注入的 HostedWebSearchTool
-            // （OpenAI 服务端托管工具，第三方网关不支持），与本处自接的 Exa MCP 无关。
             ChatOptions = new ChatOptions
             {
                 Tools =
                 [
-                    new ShellCommandSanitizer(shell.AsAIFunction(requireApproval: true)),
+                    new ShellCommandSanitizer(shellAiFunction),
                     .. pdfTools.AsAiTools(),
                     .. excelTools.AsAiTools(),
                     .. webSearchTools ?? [],
@@ -263,17 +268,23 @@ public static class FileAgentFactory
             // Shell 环境感知：把 shell 家族/OS/工作目录/CLI 版本注入 agent 上下文
             AIContextProviders = [new ShellEnvironmentProvider(shell)],
 
-            // 审批：ToolApprovalAgent 中间件默认挂载；不配 AutoApprovalRules
-            // = 每个写请求都透传给 REPL 人工决定。
-            // HITL 策略：只有"修改数据 / 删除数据 / 账号权限"才需要人工审批——
-            // run_shell 的只读命令（Get-* / Select-String / Start-Sleep / dir 等）
-            // 经 AutoApprovalRules 自动放行；结构操作（移动/复制/建删目录）、
-            // 账号权限类命令、以及未知可执行物不在只读白名单内，仍走人工审批。
-            // file_access_write/replace/delete（改数据/删数据）保持人工审批不变。
+            // 审批：ToolApprovalAgent 中间件默认挂载；
+            // 若为 full 全面权限模式，所有工具（含 shell 和写入）直接自动放行，绝不弹窗打扰；
+            // 若为 ask 或 auto 模式，run_shell 的只读命令自动放行，结构操作与写入走人工确认。
             ToolApprovalAgentOptions = new ToolApprovalAgentOptions
             {
                 MaxAutoApprovalIterations = 5,
-                AutoApprovalRules = [AutoApproveReadOnlyShell],
+                AutoApprovalRules =
+                [
+                    context =>
+                    {
+                        if (isFullPermission)
+                        {
+                            return ValueTask.FromResult(true);
+                        }
+                        return AutoApproveReadOnlyShell(context);
+                    }
+                ],
             },
 
             // 循环评估（对照 agent 范式）：

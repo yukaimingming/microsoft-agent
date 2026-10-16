@@ -156,7 +156,7 @@ public sealed class MafAgentManager
             // 6. 装配 ChatClient 与 AIAgent
             var chatClient = llm.CreateChatClient();
             var agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
-                fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState));
+                fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask"));
 
             // 7. 获取或恢复会话
             var session = await GetOrCreateSessionAsync(agent, threadId, workspaceRoot, ct);
