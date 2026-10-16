@@ -194,6 +194,13 @@ export function buildTurnProcessTimeline(
         .slice(msgIdx + 1)
         .some((later) => Boolean(later.content.trim()));
       if (hasLaterAssistantContent) return true;
+
+      // 核心防线：若本轮后面已无后续助手正文且当前消息处于本轮最后一条，它必然是本轮最终答复，
+      // 绝不可被判定为过程消息吞掉，彻底杜绝正文闪现后消失的问题！
+      if (msgIdx === turnMessages.length - 1) {
+        return false;
+      }
+
       const contentStart = item.contentStartedAt ?? item.createdAt ?? 0;
       if (
         Boolean(item.content.trim()) &&

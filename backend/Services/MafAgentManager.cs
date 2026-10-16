@@ -19,6 +19,7 @@ public sealed class MafAgentManager
 
     // 会话与执行管理
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, AIAgent> _agents = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeCts = new();
     private readonly ConcurrentDictionary<string, List<ToolApprovalRequestContent>> _pendingApprovals = new();
 
@@ -153,17 +154,27 @@ public sealed class MafAgentManager
                 OnReflection = line => _ = adapter.RecordReflectionAsync(line)
             };
 
-            // 6. 装配 ChatClient 与 AIAgent
+            var isResume = input.Resume != null && input.Resume.Count > 0;
+
+            // 6. 装配 ChatClient 与 AIAgent（若是审批恢复续跑，必须复用同一个 AIAgent 实例，以确保 ToolApprovalAgent 内部挂起状态匹配！）
             var chatClient = llm.CreateChatClient();
-            var agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
-                fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask"));
+            AIAgent agent;
+            if (isResume && _agents.TryGetValue(threadId, out var existingAgent))
+            {
+                agent = existingAgent;
+            }
+            else
+            {
+                agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
+                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask"));
+                _agents[threadId] = agent;
+            }
 
             // 7. 获取或恢复会话
             var session = await GetOrCreateSessionAsync(agent, threadId, workspaceRoot, ct);
 
             // 8. 构造本轮执行输入
             ChatMessage message;
-            var isResume = input.Resume != null && input.Resume.Count > 0;
             if (isResume)
             {
                 // 恢复人工审批
@@ -173,9 +184,12 @@ public sealed class MafAgentManager
                 var responses = new List<AIContent>();
                 foreach (var approval in pending)
                 {
-                    // 默认全批准，除非状态明确为 rejected
-                    var allApproved = input.Resume!.All(r => !"rejected".Equals(r.Status, StringComparison.OrdinalIgnoreCase));
-                    responses.Add(approval.CreateResponse(allApproved));
+                    // 默认批准，除非前端明确指定 reject
+                    var isRejected = input.Resume!.Any(r =>
+                        "rejected".Equals(r.Status, StringComparison.OrdinalIgnoreCase) ||
+                        (r.Payload is System.Text.Json.JsonElement je && je.TryGetProperty("type", out var t) && "reject".Equals(t.GetString(), StringComparison.OrdinalIgnoreCase)) ||
+                        r.Payload?.ToString()?.Contains("reject", StringComparison.OrdinalIgnoreCase) == true);
+                    responses.Add(approval.CreateResponse(!isRejected));
                 }
                 message = new ChatMessage(ChatRole.User, responses);
             }

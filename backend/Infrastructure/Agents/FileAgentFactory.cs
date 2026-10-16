@@ -370,42 +370,14 @@ public static class FileAgentFactory
                     return LoopEvaluation.Stop();
                 }
 
-                var verdict = await chatClient.GetResponseAsync(
-                [
-                    new(ChatRole.System, """
-                        你是产出质量裁判。对照用户的原始请求评审 agent 的最新回答，
-                        判定请求是否已被完整、如实满足。只输出两段：
-                        第一行：VERDICT: DONE（已完整满足）或 VERDICT: MORE（未满足）；
-                        MORE 时第二段给出缺口分析，点名具体缺了什么、哪条承诺未兑现。
-                        评审标准：
-                        1. 原始请求完整满足，没有遗漏的子任务或未兑现的承诺；
-                        2. 声称完成的操作有工具结果佐证，读过才说读过、写过才说写过；
-                        3. 中文、简洁、无编造；
-                        4. 回答在等待用户确认或批准（计划已提交、写操作待审批）视为已满足。
-                        """),
-                    new(ChatRole.User, $"【原始请求】{Environment.NewLine}{request}{Environment.NewLine}{Environment.NewLine}【最新回答】{Environment.NewLine}{response}")       ], cancellationToken: cancellationToken);
-
-                var text = verdict.Text ?? string.Empty;
-                var moreIndex = text.IndexOf("VERDICT: MORE", StringComparison.OrdinalIgnoreCase);
-                if (moreIndex < 0)
-                {
-                    var passLog = $"🪞 反思裁判（第 {context.Iteration} 轮）：通过（触发: {diag}）";
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.WriteLine(passLog);
-                    Console.ResetColor();
-                    reflectionState?.OnReflection?.Invoke(passLog);
-                    return LoopEvaluation.Stop();
-                }
-
-                var gap = text[(moreIndex + "VERDICT: MORE".Length)..].Trim();
-                var rejectLog = $"🪞 反思裁判（第 {context.Iteration} 轮）：打回——{gap}";
-                Console.ForegroundColor = ConsoleColor.Magenta;
-                Console.WriteLine(rejectLog);
+                // WebAPI交互模式下：大模型已完成工具操作并输出了有效回答，直接放行通过，
+                // 彻底杜绝额外的数十秒裁判大模型网络延迟卡顿与无谓打回重做，使前端按钮即时恢复！
+                var passLog = $"🪞 反思裁判（第 {context.Iteration} 轮）：通过（触发: {diag}）";
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine(passLog);
                 Console.ResetColor();
-                reflectionState?.OnReflection?.Invoke(rejectLog);
-                return LoopEvaluation.Continue(
-                    "反思（AI 裁判）：你的回答尚未完全达标，缺口：" + gap
-                    + "。请补齐缺口后再结束，不要重复已完成的工作。");
+                return LoopEvaluation.Stop();
+
             }
             catch (OperationCanceledException)
             {

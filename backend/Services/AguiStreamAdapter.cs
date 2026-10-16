@@ -114,7 +114,7 @@ public sealed class AguiStreamAdapter
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var refActivity = new Activity(
             refId,
-            "tool",
+            "reflection",
             "completed",
             "反思裁判评估",
             now)
