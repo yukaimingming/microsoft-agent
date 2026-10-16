@@ -103,13 +103,15 @@ function nextClientTimestamp(): number {
  * 当本轮后续出现工具调用或新一轮思考/正文时，将当前轮次已有的过程节点封口标记为 isProcess，
  * 防止后续无思考的总结正文越过工具合并回更早的纯思考节点中。
  */
-function markTurnAssistantsAsProcess(messages: ChatMessage[], runId?: string): ChatMessage[] {
+function markTurnAssistantsAsProcess(messages: ChatMessage[], runId?: string, beforeTimestamp?: number): ChatMessage[] {
   const lastUserIndex = messages.findLastIndex((m) => m.role === "user");
   let changed = false;
   const next = messages.map((msg, idx) => {
     if (idx <= lastUserIndex) return msg;
     if (msg.role !== "assistant") return msg;
     if (runId && msg.runId && msg.runId !== runId) return msg;
+    // 如果指定了时间基准，晚于该时间的助手消息属于工具之后生成的总结答复，绝不可标记为过程
+    if (beforeTimestamp !== undefined && (msg.createdAt ?? 0) > beforeTimestamp) return msg;
     const hasGeneratedStep =
       msg.content.length > 0 ||
       msg.streaming ||
@@ -435,15 +437,18 @@ export function reduceClientEvent(state: ClientState, action: ClientAction): Cli
     }
 
     case "upsertActivity": {
-      // 当工具或子 Agent 卡片到达时，当前轮次此前输出的文本属于过程说明。
+      const existingActivityIndex = state.activities.findIndex((item) => item.id === action.activity.id);
+      const isNewToolCall = existingActivityIndex === -1 && (action.activity.status === "running" || action.activity.status === "pending");
+      // 仅当全新的工具或子 Agent 卡片首次发起时，把发起之前已产生的文本标记为过程说明；
+      // 已有工具的状态更新（如完成、错误、Diff 附加）绝不污染工具之后产生的最终答复！
       const messages =
-        action.activity.kind === "tool" || action.activity.kind === "subagent"
-          ? markTurnAssistantsAsProcess(state.messages, action.activity.runId)
+        isNewToolCall && (action.activity.kind === "tool" || action.activity.kind === "subagent")
+          ? markTurnAssistantsAsProcess(state.messages, action.activity.runId, action.activity.startedAt)
           : state.messages;
       // 同一 ID 只更新同一张卡片。
       // 字段级合并 + 保留最早 startedAt：即使上游发的是增量卡片，
       // 也不会丢掉已经展示过的信息，时间线也不会抖动。
-      const index = state.activities.findIndex((item) => item.id === action.activity.id);
+      const index = existingActivityIndex;
       if (index === -1) {
         // 真实运行中到达的新卡片使用前端单调递增时钟打时间戳，保证与回放文本严格同序；
         // 单元测试构造的小时间戳（< 1e12）保持原值不变。

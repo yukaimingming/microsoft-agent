@@ -162,8 +162,13 @@ function StreamingText({ content, streaming }: { content: string; streaming?: bo
 
 function ReasoningActivity({ item }: { item: Extract<ProcessTimelineItem, { kind: "assistant" }> }) {
   const [open, setOpen] = useState(false);
+
   return (
-    <details className="process-activity-enter group" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details
+      className="process-activity-enter group"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary className="flex w-full cursor-pointer list-none items-center gap-2 text-[13px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
         <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
         {item.streaming ? <Shimmer as="span" duration={2} spread={3} className="shrink-0 font-medium">思考</Shimmer> : <span className="shrink-0">思考</span>}
@@ -276,11 +281,11 @@ export function ProcessActivityGroup({
       (isActive && !finalAnswerStreaming && !finalAnswerComplete && !runCompleted));
 
   const settled = !analysisBusy && items.length > 0;
-  // 展开与收缩策略：
-  // 1. 过程进行中（思考、中间过程说明、工具调用等执行中，!settled）默认保持展开；
-  // 2. 总体工具和过程详细全部输出完毕、要正式输出正文（settled 为 true）时自动总体收缩；
-  // 3. 用户手动点击标题栏可随时展开/收起查看详情；
-  // 4. 当状态从进行中过渡到正式正文时重置手动状态，确保自然收缩。
+  // 展开与收缩策略（严格对齐 agentscope-harness）：
+  // 1. 过程进行中（思考、中间过程说明、工具调用等执行中，!settled）大时间线默认保持展开；
+  // 2. 内部思考项（ReasoningActivity）本身不展开具体文字，单行呈现 Shimmer 闪光与预览摘要；
+  // 3. 总体工具和思考执行完毕、开始正式输出最后总结正文（settled 为 true）时大时间线自动收缩；
+  // 4. 用户手动点击标题栏可随时展开/收起查看详情；过渡到正式正文时重置手动状态，确保自然收缩。
   const [manualExpanded, setManualExpanded] = useState<boolean | undefined>(undefined);
   const prevSettledRef = useRef(settled);
   useEffect(() => {

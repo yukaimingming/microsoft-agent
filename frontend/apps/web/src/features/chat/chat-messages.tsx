@@ -189,18 +189,16 @@ export function buildTurnProcessTimeline(
     });
 
     const isItemProcessMessage = (item: ChatMessage, msgIdx: number): boolean => {
+      // 1. 绝对权威：已被标记为过程消息（后端 CUSTOM_PROCESS_MESSAGE / tool 伴随），100% 属于思维链/时间线过程
       if (item.isProcess === true) return true;
+
+      // 2. 本轮后续已有其他 assistant 消息且有正文内容：前面这条必定是过程说明
       const hasLaterAssistantContent = turnMessages
         .slice(msgIdx + 1)
         .some((later) => Boolean(later.content.trim()));
       if (hasLaterAssistantContent) return true;
 
-      // 核心防线：若本轮后面已无后续助手正文且当前消息处于本轮最后一条，它必然是本轮最终答复，
-      // 绝不可被判定为过程消息吞掉，彻底杜绝正文闪现后消失的问题！
-      if (msgIdx === turnMessages.length - 1) {
-        return false;
-      }
-
+      // 3. 在当前消息内容开始时或之后，存在工具调用或子任务活动：这是典型的工具前过程说明
       const contentStart = item.contentStartedAt ?? item.createdAt ?? 0;
       if (
         Boolean(item.content.trim()) &&
@@ -208,19 +206,29 @@ export function buildTurnProcessTimeline(
       ) {
         return true;
       }
+
+      // 4. 伴随思考且并非本轮最后一条消息
       if (Boolean(item.reasoning) && msgIdx < turnMessages.length - 1) {
         return true;
       }
-      // 【关键修复】：当大模型流式输出中间过渡文本（如“我来为你加载/查询某文件”），
-      // 若该消息伴随思考且文本属于引导短句（字数 < 120 字且以意图动词开头，或在活跃运行中），
-      // 必须留在思考链时间线内部流式展示，严禁跳到外部正文气泡中闪现再缩回！
+
+      // 5. 【流式中间过程说明防御】：
+      // 当大模型在执行工具之前，流式输出前置操作意图、工作区说明或工具执行引导（如“当前 shell 工作区是...，我用文件工具写入...”），
+      // 必须直接留在思维链时间线内部流式展示，严禁先跳到外部正文区域闪现再缩回！
+      const trimmed = item.content.trim();
+      const isToolActionIntent =
+        trimmed.length < 260 &&
+        (/^(当前\s*(shell|工作区|终端|目录)|我来|我将|让我|正在|先|首先|接下来|准备|调用|使用|执行|通过|我用|我会)/.test(trimmed) &&
+         /(工具|写入|修改|读取|查看|创建|删除|查询|执行|运行|调用|替换|diff|终端|命令|shell|workspace|工作区)/i.test(trimmed));
+
       if (
         item.streaming &&
-        Boolean(item.reasoning) &&
-        (item.content.trim().length < 120 && /^(我来|我将|让我|正在|先|为了|接下来|准备|调用|使用|执行|通过)/.test(item.content.trim()))
+        (Boolean(item.reasoning) || turnActivities.length > 0) &&
+        isToolActionIntent
       ) {
         return true;
       }
+
       return false;
     };
 
@@ -266,7 +274,7 @@ export function buildTurnProcessTimeline(
           ownedMessageIds.add(item.id);
         }
       }
-      if (isProcess && (item.content.trim() || (item.streaming && !item.reasoningStreaming))) {
+      if (isProcess && item.id !== finalMessage?.id && (item.content.trim() || (item.streaming && !item.reasoningStreaming))) {
         if (item.content.trim()) {
           items.push({
             id: `message:${item.id}`,
