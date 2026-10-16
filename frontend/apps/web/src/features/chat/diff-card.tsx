@@ -42,13 +42,13 @@ interface DiffCardProps {
 export function DiffCard({ changes }: DiffCardProps) {
   if (changes.length === 0) return null;
 
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const totalAdditions = changes.reduce((sum, change) => sum + change.additions, 0);
   const totalDeletions = changes.reduce((sum, change) => sum + change.deletions, 0);
 
   return (
     <Queue className="my-2 border-zinc-800/80 bg-zinc-950/60">
-      <QueueSection open={isOpen} onOpenChange={setIsOpen}>
+      <QueueSection defaultOpen={false} open={isOpen} onOpenChange={setIsOpen}>
         <QueueSectionTrigger className="bg-zinc-900/60 text-zinc-300 hover:bg-zinc-900">
           <QueueSectionLabel
             count={changes.length}
@@ -77,7 +77,7 @@ export function DiffCard({ changes }: DiffCardProps) {
 
 /** 单文件行：路径和行数统计，可展开查看着色 diff。 */
 function FileDiffRow({ change }: { change: FileChangeSummary }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const fileName = change.path.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? change.path;
   const dirPart = change.path.slice(0, change.path.length - fileName.length).replace(/\\/g, "/");
   const OperationIcon = change.operation === "delete"

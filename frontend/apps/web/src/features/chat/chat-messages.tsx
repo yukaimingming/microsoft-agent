@@ -189,48 +189,41 @@ export function buildTurnProcessTimeline(
     });
 
     const isItemProcessMessage = (item: ChatMessage, msgIdx: number): boolean => {
-      // 铁律 1：当前轮次的最后一条助手消息绝不可判定为过程消息（必须作为外部 Markdown 最终答复呈现）
-      if (msgIdx === turnMessages.length - 1) return false;
-      // 铁律 2：正在流式输出正文的消息绝不可判定为过程消息（避免中途被打断闪退）
-      if (item.streaming && item.content.trim().length > 0) return false;
-
-      // 如果有显式 isProcess 标记，且后面存在更新的助手正文，则归入过程说明
+      if (item.isProcess === true) return true;
       const hasLaterAssistantContent = turnMessages
         .slice(msgIdx + 1)
         .some((later) => Boolean(later.content.trim()));
-
-      if (item.isProcess === true && hasLaterAssistantContent) {
+      if (hasLaterAssistantContent) return true;
+      const contentStart = item.contentStartedAt ?? item.createdAt ?? 0;
+      if (
+        Boolean(item.content.trim()) &&
+        turnActivities.some((activity) => activity.startedAt >= contentStart)
+      ) {
         return true;
       }
-
-      // 仅当后面有新的正文且当前消息处于工具活动启动之前，才作为工具前伴随说明折叠
-      if (hasLaterAssistantContent) {
-        const contentStart = item.contentStartedAt ?? item.createdAt ?? 0;
-        if (
-          Boolean(item.content.trim()) &&
-          turnActivities.some((activity) => activity.startedAt >= contentStart)
-        ) {
-          return true;
-        }
-        if (Boolean(item.reasoning)) {
-          return true;
-        }
+      if (Boolean(item.reasoning) && msgIdx < turnMessages.length - 1) {
+        return true;
       }
-
+      // 【关键修复】：当大模型流式输出中间过渡文本（如“我来为你加载/查询某文件”），
+      // 若该消息伴随思考且文本属于引导短句（字数 < 120 字且以意图动词开头，或在活跃运行中），
+      // 必须留在思考链时间线内部流式展示，严禁跳到外部正文气泡中闪现再缩回！
+      if (
+        item.streaming &&
+        Boolean(item.reasoning) &&
+        (item.content.trim().length < 120 && /^(我来|我将|让我|正在|先|为了|接下来|准备|调用|使用|执行|通过)/.test(item.content.trim()))
+      ) {
+        return true;
+      }
       return false;
     };
 
     let finalMessage: ChatMessage | null = null;
     for (let msgIdx = turnMessages.length - 1; msgIdx >= 0; msgIdx -= 1) {
       const candidate = turnMessages[msgIdx]!;
-      if ((candidate.content.trim() || candidate.streaming) && !isItemProcessMessage(candidate, msgIdx)) {
+      if (candidate.content.trim() && !isItemProcessMessage(candidate, msgIdx)) {
         finalMessage = candidate;
         break;
       }
-    }
-    // 兜底防丢机制：若前面筛选未命中，强制选定本轮最后一条助手消息作为最终回答宿主
-    if (!finalMessage && turnMessages.length > 0) {
-      finalMessage = turnMessages[turnMessages.length - 1] ?? null;
     }
 
     if (finalMessage && finalMessage.content.trim()) {
@@ -252,8 +245,6 @@ export function buildTurnProcessTimeline(
       const item = turnMessages[msgIdx]!;
       const createdAt = item.createdAt ?? 0;
       const isProcess = isItemProcessMessage(item, msgIdx);
-      const isFinal = item.id === finalMessage?.id;
-
       if (item.reasoning) {
         items.push({
           id: `reasoning:${item.id}`,
@@ -264,12 +255,11 @@ export function buildTurnProcessTimeline(
           streaming: item.reasoningStreaming,
           section: "reasoning",
         });
-        if (!isFinal && (!item.content.trim() || isProcess)) {
+        if (item.id !== finalMessage?.id && (!item.content.trim() || isProcess)) {
           ownedMessageIds.add(item.id);
         }
       }
-      // 仅当非最终展示消息且确为过程消息时，才放入时间线并纳入 ownedMessageIds
-      if (!isFinal && isProcess && (item.content.trim() || (item.streaming && !item.reasoningStreaming))) {
+      if (isProcess && (item.content.trim() || (item.streaming && !item.reasoningStreaming))) {
         if (item.content.trim()) {
           items.push({
             id: `message:${item.id}`,
@@ -283,7 +273,7 @@ export function buildTurnProcessTimeline(
         ownedMessageIds.add(item.id);
       }
       // 防御锁：非最终答复且无实质正文的消息（如中间过程节点、空占位），一律由时间线接管，禁止外漏
-      if (!isFinal && !item.content.trim()) {
+      if (item.id !== finalMessage?.id && !item.content.trim()) {
         ownedMessageIds.add(item.id);
       }
     }
