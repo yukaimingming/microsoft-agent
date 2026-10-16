@@ -159,7 +159,7 @@ function PromptInputSubmitWithAttachments({
       disabled={!hasText && attachments.files.length === 0 && !isRunning}
       status={isRunning ? "streaming" : undefined}
       onStop={onStop}
-      className="size-8 rounded-lg bg-zinc-100 text-black hover:bg-white disabled:opacity-30 disabled:bg-zinc-800 disabled:text-zinc-500 transition-colors shadow-none"
+      className="chat-submit-btn size-8 rounded-lg transition-colors shadow-none border-0 border-none outline-none focus:outline-none focus-visible:ring-0 bg-zinc-100 text-black hover:bg-white disabled:opacity-30 disabled:bg-zinc-800 disabled:text-zinc-500"
     />
   );
 }
@@ -194,6 +194,12 @@ export function ChatInput({
   const [text, setText] = useState("");
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
+
+  // Token 用量悬浮面板
+  const [isUsageHover, setIsUsageHover] = useState(false);
+
+  // 待办任务列表展开状态
+  const [isTodoExpanded, setIsTodoExpanded] = useState(false);
 
   // 工作区下拉选择状态
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
@@ -288,114 +294,125 @@ export function ChatInput({
   return (
     <div className="shrink-0 bg-black px-4 py-4">
       <div className="mx-auto w-full max-w-3xl">
-        <div className="mb-2 flex min-w-0 items-end gap-2">
-          {/* 工作区选择器保持在左侧；待办状态在其右侧同行展示。 */}
+        <div className="mb-2 flex min-w-0 items-center gap-2">
+          {/* 工作区选择器保持在左侧 */}
           <div className="relative flex w-fit shrink-0 items-center" ref={workspaceDropdownRef}>
-          <button
-            type="button"
-            data-testid="workspace-mode-selector"
-            onClick={() => {
-              setIsWorkspaceDropdownOpen((v) => !v);
-              setIsModelDropdownOpen(false);
-              setIsEffortDropdownOpen(false);
-            }}
-            className="group inline-flex items-center gap-1.5 rounded-xl bg-transparent hover:bg-zinc-900/80 px-2.5 py-1 text-[13px] font-medium text-zinc-100 transition-colors select-none max-w-[280px] border-0 outline-none"
-            title={isDirectChat ? "当前工作区：直接聊天（未绑定目录，点击可切换工作区）" : `当前绑定工作区：${currentWorkspacePath}（点击可切换工作区）`}
-          >
-            {isDirectChat ? (
-              <MessageSquareIcon className="size-4 text-zinc-300 shrink-0" />
-            ) : (
-              <FolderIcon className="size-4 text-zinc-300 shrink-0" />
-            )}
-            <span className="text-zinc-400 font-normal mr-0.5 text-[12px]">工作区:</span>
-            <span className="truncate">
-              {isDirectChat ? "直接聊天" : currentWorkspaceName}
-            </span>
-            <ChevronDownIcon
-              className={cn(
-                "size-3.5 text-zinc-400 shrink-0 transition-transform duration-200 ml-0.5",
-                isWorkspaceDropdownOpen && "rotate-180 text-zinc-200",
-              )}
-            />
-          </button>
-
-          {/* 下拉菜单面板（大圆角、深灰底、无多余线条、移动悬浮高亮） */}
-          {isWorkspaceDropdownOpen && (
-            <div className="workspace-dropdown-panel absolute left-0 bottom-full mb-2 z-50 w-64 rounded-2xl bg-[#242427] p-1.5 shadow-2xl border-0 animate-in fade-in zoom-in-95 duration-100">
-              {/* 选项 1：直接聊天模式 */}
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectWorkspace?.(null);
-                  setIsWorkspaceDropdownOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
-                  isDirectChat
-                    ? "bg-[#2f2f35] text-white font-medium"
-                    : "text-zinc-200 hover:bg-[#2f2f35] hover:text-white",
-                )}
-              >
+            <button
+              type="button"
+              data-testid="workspace-mode-selector"
+              onClick={() => {
+                setIsWorkspaceDropdownOpen((v) => !v);
+                setIsTodoExpanded(false);
+                setIsModelDropdownOpen(false);
+                setIsEffortDropdownOpen(false);
+              }}
+              className="group inline-flex items-center gap-1.5 rounded-xl bg-transparent hover:bg-zinc-900/80 px-2.5 py-1 text-[13px] font-medium text-zinc-100 transition-colors select-none max-w-[280px] border-0 outline-none"
+              title={isDirectChat ? "当前为直接聊天模式（无工作区）" : `当前工作区：${currentWorkspacePath}`}
+            >
+              {isDirectChat ? (
                 <MessageSquareIcon className="size-4 text-zinc-300 shrink-0" />
-                <span className="truncate">直接聊天</span>
-                {isDirectChat && <CheckIcon className="size-4 text-white shrink-0 ml-auto" />}
-              </button>
+              ) : (
+                <FolderIcon className="size-4 text-zinc-300 shrink-0" />
+              )}
+              <span className="truncate">
+                {isDirectChat ? "直接聊天" : currentWorkspaceName}
+              </span>
+              <ChevronDownIcon
+                className={cn(
+                  "size-3.5 text-zinc-400 shrink-0 transition-transform duration-200 ml-0.5",
+                  isWorkspaceDropdownOpen && "rotate-180 text-zinc-200",
+                )}
+              />
+            </button>
 
-              {/* 选项 2..N：工作区列表（无多余分割线，干净紧凑排列） */}
-              <div className="max-h-[220px] overflow-y-auto space-y-0.5 my-0.5 scrollbar-thin scrollbar-thumb-zinc-700">
-                {customWorkspaces && customWorkspaces.length > 0
-                  ? customWorkspaces.map((wsPath) => {
-                      const isSelected =
-                        !isDirectChat &&
-                        (currentWorkspacePath === wsPath ||
-                          currentWorkspacePath.toLowerCase() === wsPath.toLowerCase());
-                      const name = extractFolderName(wsPath);
-                      return (
-                        <button
-                          key={wsPath}
-                          type="button"
-                          onClick={() => {
-                            onSelectWorkspace?.(wsPath);
-                            setIsWorkspaceDropdownOpen(false);
-                          }}
-                          className={cn(
-                            "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
-                            isSelected
-                              ? "bg-[#2f2f35] text-white font-medium"
-                              : "text-zinc-200 hover:bg-[#2f2f35] hover:text-white",
-                          )}
-                        >
-                          <FolderIcon className="size-4 text-zinc-300 shrink-0" />
-                          <span className="truncate">{name}</span>
-                          {isSelected && <CheckIcon className="size-4 text-white shrink-0 ml-auto" />}
-                        </button>
-                      );
-                    })
-                  : null}
+            {/* 下拉菜单面板（大圆角、深灰底、无多余线条、移动悬浮高亮） */}
+            {isWorkspaceDropdownOpen && (
+              <div className="workspace-dropdown-panel absolute left-0 bottom-full mb-2 z-50 w-64 rounded-2xl bg-[#242427] p-1.5 shadow-2xl border-0 animate-in fade-in zoom-in-95 duration-100">
+                {/* 选项 1：直接聊天模式 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectWorkspace?.(null);
+                    setIsWorkspaceDropdownOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
+                    isDirectChat
+                      ? "bg-[#2f2f35] text-white font-medium"
+                      : "text-zinc-200 hover:bg-[#2f2f35] hover:text-white",
+                  )}
+                >
+                  <MessageSquareIcon className="size-4 text-zinc-300 shrink-0" />
+                  <span className="truncate">直接聊天</span>
+                  {isDirectChat && <CheckIcon className="size-4 text-white shrink-0 ml-auto" />}
+                </button>
+
+                {/* 选项 2..N：工作区列表（无多余分割线，干净紧凑排列） */}
+                <div className="max-h-[220px] overflow-y-auto space-y-0.5 my-0.5 scrollbar-thin scrollbar-thumb-zinc-700">
+                  {customWorkspaces && customWorkspaces.length > 0
+                    ? customWorkspaces.map((wsPath) => {
+                        const isSelected =
+                          !isDirectChat &&
+                          (currentWorkspacePath === wsPath ||
+                            currentWorkspacePath.toLowerCase() === wsPath.toLowerCase());
+                        const name = extractFolderName(wsPath);
+                        return (
+                          <button
+                            key={wsPath}
+                            type="button"
+                            onClick={() => {
+                              onSelectWorkspace?.(wsPath);
+                              setIsWorkspaceDropdownOpen(false);
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
+                              isSelected
+                                ? "bg-[#2f2f35] text-white font-medium"
+                                : "text-zinc-200 hover:bg-[#2f2f35] hover:text-white",
+                            )}
+                          >
+                            <FolderIcon className="size-4 text-zinc-300 shrink-0" />
+                            <span className="truncate">{name}</span>
+                            {isSelected && <CheckIcon className="size-4 text-white shrink-0 ml-auto" />}
+                          </button>
+                        );
+                      })
+                    : null}
+                </div>
+
+                {/* 选项：添加工作区...（使用加号图标，无额外分割线） */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsWorkspaceDropdownOpen(false);
+                    onOpenFolderPicker?.();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-zinc-200 hover:bg-[#2f2f35] hover:text-white transition-colors select-none"
+                >
+                  <PlusIcon className="size-4 text-zinc-300 shrink-0" />
+                  <span className="truncate">添加工作区...</span>
+                </button>
               </div>
+            )}
+          </div>
 
-              {/* 选项：添加工作区...（使用加号图标，无额外分割线） */}
-              <button
-                type="button"
-                onClick={() => {
+          {/* 任务 Todo 列表平行在工作区选择器右侧独立展示（展开详情为绝对定位浮层，互不影响） */}
+          {todoActivity ? (
+            <div ref={todoCardRef} className="relative flex w-fit shrink-0 items-center">
+              <TodoCard
+                activity={todoActivity}
+                isOpen={isTodoExpanded}
+                onToggleOpen={() => {
+                  setIsTodoExpanded((v) => !v);
                   setIsWorkspaceDropdownOpen(false);
-                  onOpenFolderPicker?.();
+                  setIsModelDropdownOpen(false);
+                  setIsEffortDropdownOpen(false);
                 }}
-                className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-zinc-200 hover:bg-[#2f2f35] hover:text-white transition-colors select-none"
-              >
-                <PlusIcon className="size-4 text-zinc-300 shrink-0" />
-                <span className="truncate">添加工作区...</span>
-              </button>
+                onClose={() => setIsTodoExpanded(false)}
+              />
             </div>
-          )}
-          </div>
+          ) : null}
         </div>
-
-        {todoActivity ? (
-          <div ref={todoCardRef} className="mb-2 min-w-0">
-            <TodoCard activity={todoActivity} />
-          </div>
-        ) : null}
 
         <PromptInputProvider>
           {/* 纯暗黑极简边框：无任何刺眼白色外框，深邃内敛 */}
@@ -407,7 +424,7 @@ export function ChatInput({
             maxFiles={MAX_ATTACHMENT_COUNT}
             maxFileSize={MAX_ATTACHMENT_SIZE}
             onError={handleAttachmentError}
-            className="rounded-2xl border border-zinc-800/80 bg-zinc-950/70 shadow-none focus-within:border-zinc-600 focus-within:ring-0 transition-colors overflow-visible outline-none"
+            className="chat-prompt-input rounded-2xl border border-zinc-800/80 bg-zinc-950/70 shadow-none focus-within:border-zinc-600 focus-within:ring-0 transition-colors overflow-visible outline-none"
           >
             <PromptInputHeader className="px-3 pt-3">
               <PromptInputAttachmentsDisplay onPreview={setPreviewAttachment} />
@@ -417,28 +434,29 @@ export function ChatInput({
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="输入任务描述...（Enter 发送，Shift+Enter 换行）"
-                className="min-h-[50px] max-h-[220px] px-3.5 py-2.5 text-[13.5px] text-zinc-100 placeholder:text-zinc-600 focus:outline-none border-0 shadow-none focus-visible:ring-0"
+                className="chat-prompt-textarea min-h-[50px] max-h-[220px] px-3.5 py-2.5 text-[13.5px] text-zinc-100 placeholder:text-zinc-600 focus:outline-none border-0 shadow-none focus-visible:ring-0 bg-transparent"
               />
             </PromptInputBody>
 
             {/* 底部工具条与提交按钮 */}
-            <PromptInputFooter className="flex items-center justify-between px-3 pb-2.5 pt-1.5 border-t border-zinc-800/40 overflow-visible">
-              <PromptInputTools className="flex items-center gap-2.5 text-[12px]">
+            <PromptInputFooter className="flex items-center justify-between px-3 pb-2.5 pt-1.5 border-0 border-none overflow-visible">
+              <PromptInputTools className="flex items-center gap-2.5 text-[12px] flex-nowrap min-w-0">
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="添加图片或文件"
                     title="添加图片或文件"
-                    className="size-8 rounded-lg text-zinc-300 hover:bg-zinc-800/70"
+                    className="chat-action-menu-btn size-8 rounded-lg text-zinc-300 hover:bg-zinc-800/70 border-0 border-none outline-none focus:outline-none focus-visible:ring-0 shadow-none transition-colors shrink-0"
                   />
                   <PromptInputActionMenuContent className="border-zinc-700 bg-zinc-900 text-zinc-100">
                     <PromptInputActionAddAttachments label="添加图片或文件" />
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
                 {/* 运行权限选择：只影响后续发起的运行。 */}
-                <div className="relative" ref={permissionDropdownRef}>
+                <div className="relative shrink-0" ref={permissionDropdownRef}>
                   <button
                     type="button"
                     data-testid="permission-mode-selector"
+                    data-permission-mode={permissionMode}
                     aria-label={`权限模式：${PERMISSION_OPTIONS.find((option) => option.mode === permissionMode)?.label ?? "请求批准"}`}
                     onClick={() => {
                       setIsPermissionDropdownOpen((open) => !open);
@@ -446,55 +464,59 @@ export function ChatInput({
                       setIsEffortDropdownOpen(false);
                     }}
                     className={cn(
-                      "composer-selector flex items-center gap-1.5 rounded-md px-2 py-1 text-zinc-300 transition-colors",
+                      "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0",
                       permissionMode === "full"
-                        ? "border border-amber-500/70 bg-amber-500/15 text-amber-300 font-medium shadow-[0_0_8px_rgba(245,158,11,0.2)] hover:bg-amber-500/20"
-                        : "bg-transparent hover:bg-zinc-800/70 hover:text-white",
+                        ? "text-red-500 hover:bg-red-500/10 hover:text-red-400 font-semibold"
+                        : "text-zinc-300 hover:bg-zinc-800/70 hover:text-white font-medium",
                     )}
-                    title={
-                      permissionMode === "full"
-                        ? "⚠️ 危险模式：已开启完全访问权限（Agent免审批直接执行Shell命令与修改文件）"
-                        : "选择本次及后续运行的工具审批方式"
-                    }
+                    title="选择本次及后续运行的工具审批方式"
                   >
                     {(() => {
                       const option = PERMISSION_OPTIONS.find((item) => item.mode === permissionMode) ?? PERMISSION_OPTIONS[0]!;
-                      return <option.Icon className={cn("size-3.5 shrink-0", permissionMode === "full" ? "text-amber-400" : "text-zinc-400")} />;
+                      return <option.Icon className={cn("size-3.5 shrink-0", permissionMode === "full" ? "text-red-500" : "text-zinc-400")} />;
                     })()}
-                    <span className={cn("text-[11.5px] font-medium", permissionMode === "full" && "text-amber-300")}>
+                    <span className={cn("text-[11.5px]", permissionMode === "full" ? "text-red-500 font-semibold" : "font-medium")}>
                       {PERMISSION_OPTIONS.find((option) => option.mode === permissionMode)?.label ?? "请求批准"}
                     </span>
-                    <ChevronDownIcon className={cn("size-3 text-zinc-500 transition-transform", isPermissionDropdownOpen && "rotate-180")} />
+                    <ChevronDownIcon className={cn("size-3 transition-transform", permissionMode === "full" ? "text-red-500/80" : "text-zinc-500", isPermissionDropdownOpen && "rotate-180")} />
                   </button>
 
                   {isPermissionDropdownOpen && (
                     <div className="workspace-dropdown-panel composer-menu absolute bottom-full left-0 z-50 mb-2 w-[min(21rem,calc(100vw-2rem))] rounded-xl border border-zinc-700/70 bg-[#242427] p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
                       {PERMISSION_OPTIONS.map(({ mode, label, description, Icon }) => {
                         const isSelected = permissionMode === mode;
+                        const isFull = mode === "full";
                         return (
                           <button
                             key={mode}
                             type="button"
                             data-testid={`permission-mode-${mode}`}
+                            data-permission-mode={mode}
                             aria-pressed={isSelected}
                             onClick={() => {
                               selectPermissionMode(mode);
                             }}
                             className={cn(
                               "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
-                              isSelected ? "bg-[#2f2f35]" : "hover:bg-[#2f2f35]",
+                              isFull
+                                ? isSelected
+                                  ? "bg-red-500/15 border border-red-500/35 text-red-500 shadow-xs"
+                                  : "text-red-500 hover:bg-red-500/10 border border-transparent"
+                                : isSelected
+                                  ? "bg-[#2f2f35] text-zinc-100 border border-transparent"
+                                  : "hover:bg-[#2f2f35] text-zinc-300 border border-transparent",
                             )}
                           >
-                            <Icon className={cn("size-5 shrink-0", mode === "full" ? "text-orange-400" : "text-zinc-300")} />
+                            <Icon className={cn("size-5 shrink-0", isFull ? "text-red-500" : "text-zinc-300")} />
                             <span className="min-w-0 flex-1">
-                              <span className={cn("block text-[13px] font-medium", mode === "full" && "text-orange-400")}>
+                              <span className={cn("block text-[13px] font-medium", isFull ? "text-red-500 font-semibold" : "")}>
                                 {label}
                               </span>
-                              <span className="block text-[11.5px] leading-snug text-zinc-400">
+                              <span className={cn("block text-[11.5px] leading-snug", isFull ? "text-red-400" : "text-zinc-400")}>
                                 {description}
                               </span>
                             </span>
-                            {isSelected && <CheckIcon className={cn("size-4 shrink-0", mode === "full" ? "text-orange-400" : "text-zinc-200")} />}
+                            {isSelected && <CheckIcon className={cn("size-4 shrink-0", isFull ? "text-red-500" : "text-zinc-200")} />}
                           </button>
                         );
                       })}
@@ -503,7 +525,7 @@ export function ChatInput({
                 </div>
 
                 {/* 1. 模型选择下拉菜单 */}
-                <div className="relative" ref={modelDropdownRef}>
+                <div className="relative shrink-0" ref={modelDropdownRef}>
                   <button
                     type="button"
                     onClick={() => {
@@ -511,7 +533,7 @@ export function ChatInput({
                       setIsEffortDropdownOpen(false);
                       setIsPermissionDropdownOpen(false);
                     }}
-                    className="composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2.5 py-1 text-zinc-300 transition-colors hover:bg-zinc-800/70 hover:text-white"
+                    className="composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2.5 py-1 text-zinc-300 transition-colors hover:bg-zinc-800/70 hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0"
                     title="点击下拉切换当前模型"
                   >
                     <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
@@ -578,15 +600,109 @@ export function ChatInput({
                   )}
                 </div>
 
-                {/* 1.5 DeepSeek Harness 原生 ContextMeter：环形占用率仪表圈与上下文构成/用量面板 */}
-                <ContextMeter
-                  messages={messages}
-                  activities={activities}
-                  providedUsage={usage}
-                />
+                {/* Token 用量指示小圆圈：悬浮显示上下文与 Token 统计面板 */}
+                <div
+                  className="relative"
+                  onMouseEnter={() => setIsUsageHover(true)}
+                  onMouseLeave={() => setIsUsageHover(false)}
+                >
+                  <button
+                    type="button"
+                    aria-label="Token 用量"
+                    title="Token 用量"
+                    className={cn(
+                      "chat-token-usage-btn flex size-4 items-center justify-center rounded-full transition-colors cursor-pointer border-0 border-none outline-none focus:outline-none shadow-none",
+                      usage
+                        ? "bg-emerald-400/20 hover:bg-emerald-400/35"
+                        : "bg-zinc-800 hover:bg-zinc-700",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "chat-token-usage-dot size-1.5 rounded-full",
+                        usage ? "bg-emerald-400" : "bg-zinc-500",
+                      )}
+                    />
+                  </button>
+
+                  {isUsageHover && (
+                    <div className="absolute bottom-full mb-2 left-0 z-50 w-72 rounded-xl border border-zinc-800 bg-[#0c0c0e] p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-100 text-left">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+                          Token 用量
+                        </span>
+                        <span className="text-[10px] text-zinc-600">
+                          {usage ? "最近一次运行" : "暂无数据"}
+                        </span>
+                      </div>
+
+                      {usage ? (
+                        <>
+                          {/* 上下文占用：最后一次模型调用的输入量 / 上下文窗口参考值 */}
+                          <div className="mb-2.5">
+                            <div className="flex items-center justify-between text-[11.5px] text-zinc-300 mb-1">
+                              <span>上下文占用</span>
+                              <span className="font-mono tabular-nums text-zinc-200">
+                                {usage.lastInputTokens.toLocaleString()}
+                                {usage.contextWindow
+                                  ? ` / 约 ${Math.round(usage.contextWindow / 1000)}K`
+                                  : " / —"}
+                              </span>
+                            </div>
+                            {usage.contextWindow ? (
+                              <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-emerald-400/80"
+                                  style={{
+                                    width: `${Math.min(100, (usage.lastInputTokens / usage.contextWindow) * 100)}%`,
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-zinc-600">
+                                当前模型上下文窗口大小未知，无法显示占比
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-1 text-[11.5px]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-400">输入 Tokens</span>
+                              <span className="font-mono tabular-nums text-zinc-200">
+                                {usage.inputTokens.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-400">输出 Tokens</span>
+                              <span className="font-mono tabular-nums text-zinc-200">
+                                {usage.outputTokens.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-400">缓存命中</span>
+                              <span className="font-mono tabular-nums text-emerald-400/90">
+                                {usage.cachedInputTokens.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80">
+                              <span className="text-zinc-300 font-medium">总计</span>
+                              <span className="font-mono tabular-nums text-zinc-100 font-medium">
+                                {usage.totalTokens.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-[11.5px] text-zinc-500 leading-relaxed">
+                          发起一次对话后，这里会显示该次运行的上下文占用、输入 / 输出 Token 与缓存命中情况。
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* 2. 思考等级下拉选择样式 */}
-                <div className="relative" ref={effortDropdownRef}>
+                <div className="relative shrink-0" ref={effortDropdownRef}>
                   <button
                     type="button"
                     disabled={reasoningUnsupported}
@@ -596,7 +712,7 @@ export function ChatInput({
                       setIsPermissionDropdownOpen(false);
                     }}
                     className={cn(
-                      "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors hover:bg-zinc-800/70",
+                      "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors hover:bg-zinc-800/70 border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0",
                       reasoningUnsupported ? "opacity-40 cursor-not-allowed text-zinc-600" : "text-zinc-300 hover:text-white"
                     )}
                     title={

@@ -301,17 +301,86 @@ html.light .group\/user .bg-zinc-900\/90 p {
 html.light .group\/user textarea {
   color: #0f172a !important;
 }
+/* 输入框浅色模式适配：纯白卡片底、精致浅灰外边框、内部无横线、按钮无边框无灰底 */
+html.light .chat-prompt-input,
 html.light [data-slot="prompt-input"] {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
 }
+html.light .chat-prompt-input textarea,
+html.light .chat-prompt-textarea,
 html.light [data-slot="prompt-input"] textarea {
   color: #0f172a !important;
 }
+html.light .chat-prompt-input textarea::placeholder,
+html.light .chat-prompt-textarea::placeholder,
 html.light [data-slot="prompt-input"] textarea::placeholder {
   color: #94a3b8 !important;
 }
+
+/* 附件加号按钮：浅色下默认透明无底色无边框，悬浮浅灰高亮 */
+.chat-action-menu-btn {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+html.light .chat-action-menu-btn {
+  color: #64748b !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+html.light .chat-action-menu-btn:hover {
+  color: #0f172a !important;
+  background-color: #f1f5f9 !important;
+}
+
+/* 提交/发送按钮：深浅模式均无边框，浅色下默认柔和浅灰禁用态或纯黑就绪态 */
+.chat-submit-btn {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+html.light .chat-submit-btn {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+html.light .chat-submit-btn:hover {
+  background-color: #000000 !important;
+}
+html.light .chat-submit-btn:disabled {
+  background-color: #f1f5f9 !important;
+  color: #94a3b8 !important;
+  opacity: 0.65 !important;
+}
+
+/* Token 用量指示器：浅色模式下无边框、无深黑圆环，采用清透浅灰底 */
+.chat-token-usage-btn {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+html.light .chat-token-usage-btn {
+  border: none !important;
+  background-color: #e2e8f0 !important;
+}
+html.light .chat-token-usage-btn:hover {
+  background-color: #cbd5e1 !important;
+}
+html.light .chat-token-usage-btn.bg-emerald-400\/20 {
+  background-color: #dcfce7 !important;
+}
+html.light .chat-token-usage-btn.bg-emerald-400\/20:hover {
+  background-color: #bbf7d0 !important;
+}
+html.light .chat-token-usage-dot {
+  background-color: #94a3b8 !important;
+}
+html.light .chat-token-usage-dot.bg-emerald-400 {
+  background-color: #16a34a !important;
+}
+
 html.light [data-testid="workspace-mode-selector"] {
   background-color: #ffffff !important;
   border: none !important;
@@ -347,14 +416,23 @@ html.light .workspace-dropdown-panel button.bg-\[\#2f2f35\] svg {
   color: #0f172a !important;
 }
 
-/* 输入框的权限、模型和思考等级菜单沿用工作区选择器的主题配色。 */
+/* 输入框的权限、模型和思考等级按钮：深浅模式均默认无边框、无灰底，仅 hover 时呈现柔和高亮反馈。 */
+.composer-selector {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
 html.light .composer-selector {
-  color: #334155 !important;
-  background-color: #f1f5f9 !important;
+  color: #475569 !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 html.light .composer-selector:hover {
   color: #0f172a !important;
-  background-color: #e2e8f0 !important;
+  background-color: #f1f5f9 !important;
 }
 html.light .composer-menu {
   background-color: #ffffff !important;
@@ -374,8 +452,40 @@ html.light .composer-menu .text-zinc-400,
 html.light .composer-menu .text-zinc-600 {
   color: #64748b !important;
 }
-html.light .composer-menu .text-orange-400 {
-  color: #c2410c !important;
+/* 完全访问权限：在浅色与深色模式下均保持醒目的纯正红色 */
+.composer-menu [data-permission-mode="full"],
+html.light .composer-menu [data-permission-mode="full"] {
+  color: #ef4444 !important;
+}
+.composer-menu [data-permission-mode="full"] span,
+html.light .composer-menu [data-permission-mode="full"] span {
+  color: #ef4444 !important;
+}
+.composer-menu [data-permission-mode="full"] svg,
+html.light .composer-menu [data-permission-mode="full"] svg {
+  color: #ef4444 !important;
+}
+.composer-menu [data-permission-mode="full"][aria-pressed="true"],
+html.light .composer-menu [data-permission-mode="full"][aria-pressed="true"] {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: #ef4444 !important;
+}
+.composer-menu [data-permission-mode="full"]:hover,
+html.light .composer-menu [data-permission-mode="full"]:hover {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+}
+.composer-selector[data-permission-mode="full"],
+html.light .composer-selector[data-permission-mode="full"] {
+  color: #ef4444 !important;
+}
+.composer-selector[data-permission-mode="full"] span,
+html.light .composer-selector[data-permission-mode="full"] span {
+  color: #ef4444 !important;
+}
+.composer-selector[data-permission-mode="full"] svg,
+html.light .composer-selector[data-permission-mode="full"] svg {
+  color: #ef4444 !important;
 }
 html.light .new-chat-sidebar-button {
   background-color: #f1f5f9 !important;
