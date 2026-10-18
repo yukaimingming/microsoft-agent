@@ -1,4 +1,5 @@
 import { memo, useMemo, useRef, useState, useLayoutEffect, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { type Activity, type RunTokenUsage } from "@deepagent/shared";
 import type { ChatMessage } from "./client-reducer.js";
 import { cn } from "../../lib/utils.js";
@@ -329,7 +330,9 @@ export const ContextMeter = memo(function ContextMeter({
   );
 
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ left: number; bottom: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // 环形几何参数：半径 5.5, 直径 14, 周长 2 * PI * 5.5 = 34.5575
   const RADIUS = 5.5;
@@ -340,11 +343,23 @@ export const ContextMeter = memo(function ContextMeter({
   const contextWindow = usage?.contextWindow ?? 131072;
   const percent = usage ? Math.max(1, Math.min(100, Math.round((usedTokens / contextWindow) * 100))) : 0;
 
+  const handleToggle = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setCoords({
+        left: Math.max(12, Math.min(window.innerWidth - 320, rect.left)),
+        bottom: window.innerHeight - rect.top + 8,
+      });
+    }
+    setOpen((v) => !v);
+  };
+
   // 点击外部自动关闭
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: MouseEvent) => {
-      if (e.target instanceof Node && rootRef.current?.contains(e.target)) return;
+      const target = e.target as Node;
+      if (dialogRef.current?.contains(target) || btnRef.current?.contains(target)) return;
       setOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -374,15 +389,16 @@ export const ContextMeter = memo(function ContextMeter({
   }, [breakdown, breakdownTotal, percent]);
 
   return (
-    <div className="relative inline-flex items-center" ref={rootRef}>
+    <div className="relative inline-flex items-center">
       {/* 触发胶囊按钮 */}
       <button
+        ref={btnRef}
         type="button"
         aria-label={`上下文占用 ${percent}%，点击查看详情`}
         title={`上下文占用 ${percent}%（${formatTokens(usedTokens)} / ${formatTokens(contextWindow)}）`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         className={cn(
-          "context-meter-btn flex items-center gap-1.5 rounded-md px-2 py-0.5 border text-[11px] transition-colors cursor-pointer select-none",
+          "context-meter-btn flex items-center gap-1.5 rounded-md px-2 py-0.5 border text-[11px] transition-colors cursor-pointer select-none whitespace-nowrap shrink-0",
           usage
             ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
             : "border-zinc-700/60 bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
@@ -415,12 +431,19 @@ export const ContextMeter = memo(function ContextMeter({
         <span className="font-sans font-medium">用量 {percent > 0 ? `${percent}%` : ""}</span>
       </button>
 
-      {/* 弹出的详细统计面板（完全还原 DeepSeek Harness 布局） */}
-      {open && (
+      {/* 弹出的详细统计面板（完全还原 DeepSeek Harness 布局，通过 Portal 挂载防裁剪） */}
+      {open && coords && typeof document !== "undefined" && createPortal(
         <div
+          ref={dialogRef}
           role="dialog"
           aria-label="上下文与 Token 用量"
-          className="context-meter-dialog absolute bottom-full mb-2 left-0 z-50 w-76 rounded-xl border border-zinc-800 bg-[#0f0f12] p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100 text-left text-zinc-200"
+          style={{
+            position: "fixed",
+            left: `${coords.left}px`,
+            bottom: `${coords.bottom}px`,
+            zIndex: 9999,
+          }}
+          className="context-meter-dialog w-76 rounded-xl border border-zinc-800 bg-[#0f0f12] p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100 text-left text-zinc-200"
         >
           {/* 头部：上下文已用百分比与总量 */}
           <div className="flex items-center justify-between text-[12px] font-medium mb-1.5">
@@ -506,7 +529,8 @@ export const ContextMeter = memo(function ContextMeter({
               <span>首 token: {formatDuration(usage.ttftMs)}</span>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
