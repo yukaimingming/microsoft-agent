@@ -259,8 +259,9 @@ function ChatInputContent({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
 
-  // 排队消息队列（参考截图在输入框中呈现）
+  // 排队消息队列（参考截图在输入框背面呈折叠卡片展示）
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+  const [isQueueCollapsed, setIsQueueCollapsed] = useState(false);
   const prevIsRunningRef = useRef(isRunning);
 
   // 监听当前模型回复完成（isRunning 从 true 变为 false），自动流转发送排队消息
@@ -292,6 +293,7 @@ function ChatInputContent({
       attachments: files,
     };
     setQueuedMessages((prev) => [...prev, newMsg]);
+    setIsQueueCollapsed(false);
     controller.textInput.setInput("");
     setText("");
     setAttachmentError(null);
@@ -594,70 +596,101 @@ function ChatInputContent({
           ) : null}
         </div>
 
-        {/* 排队消息列表（完全对齐用户上传图片样式，适配深浅双色） */}
-        {queuedMessages.length > 0 && (
-          <div className="mb-2 space-y-1.5 animate-in fade-in slide-in-from-bottom-1 duration-150">
-            {queuedMessages.map((msg) => (
+        {/* 输入框与背面折叠排队卡片组合层（对齐用户上传图片：折叠卡片在输入框背面露出） */}
+        <div
+          className={cn(
+            "queued-stacked-wrapper relative w-full transition-all duration-200",
+            queuedMessages.length > 0
+              ? "rounded-[22px] bg-[#edf0f4] border border-zinc-300/80 p-2 dark:bg-[#1c1d22] dark:border-zinc-800 shadow-xs"
+              : ""
+          )}
+        >
+          {/* 背部折叠卡片区域（当有排队任务时展示在输入框背面） */}
+          {queuedMessages.length > 0 && (
+            <div className="queued-stacked-header px-2.5 pt-1.5 pb-2.5 select-none animate-in fade-in duration-150">
+              {/* 顶部标题栏：折叠/展开 */}
               <div
-                key={msg.id}
-                className="queued-message-card group flex items-center justify-between rounded-xl border px-3.5 py-2 transition-all shadow-xs bg-white border-zinc-200 text-zinc-800 dark:bg-[#1f1f23] dark:border-zinc-800/80 dark:text-zinc-100 dark:shadow-md"
+                className="flex items-center justify-between cursor-pointer py-0.5"
+                onClick={() => setIsQueueCollapsed((v) => !v)}
               >
-                <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="size-4 shrink-0 text-zinc-500 dark:text-zinc-400"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M8.5 10.5h7m-7 3h4.5M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-3.64-.69L3 21l1.45-3.62A7.854 7.854 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                  <span className="truncate text-[13px] font-normal select-text text-zinc-800 dark:text-zinc-200">
-                    {msg.text || (msg.attachments.length > 0 ? `[包含 ${msg.attachments.length} 个附件]` : "")}
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-semibold text-zinc-700 dark:text-zinc-300 tracking-tight">
+                    {queuedMessages.length} 个任务排队中
                   </span>
                 </div>
-
-                <div className="flex items-center gap-1 shrink-0 text-zinc-500 dark:text-zinc-400">
-                  {/* 撤回编辑 */}
-                  <button
-                    type="button"
-                    onClick={() => handleEditQueued(msg)}
-                    title="撤回并编辑"
-                    className="size-7 flex items-center justify-center rounded-lg transition-colors text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-700/50"
-                  >
-                    <SquarePenIcon className="size-3.5" />
-                  </button>
-                  {/* 删除 */}
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteQueued(msg.id)}
-                    title="删除排队消息"
-                    className="size-7 flex items-center justify-center rounded-lg transition-colors text-zinc-500 hover:text-red-500 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-500/10"
-                  >
-                    <Trash2Icon className="size-3.5" />
-                  </button>
-                  {/* 立即引导/发送 */}
-                  <button
-                    type="button"
-                    onClick={() => handleSendQueuedNow(msg)}
-                    title="立即引导（打断当前回复并立即发送）"
-                    className="size-7 flex items-center justify-center rounded-lg transition-colors text-emerald-600 hover:bg-emerald-50 dark:text-zinc-300 dark:hover:text-emerald-400 dark:hover:bg-emerald-500/10"
-                  >
-                    <ArrowUpIcon className="size-3.5" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsQueueCollapsed((v) => !v);
+                  }}
+                  className="size-6 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
+                  title={isQueueCollapsed ? "展开排队任务" : "折叠排队任务"}
+                >
+                  <ChevronDownIcon
+                    className={cn(
+                      "size-4 transition-transform duration-200",
+                      isQueueCollapsed && "-rotate-90",
+                    )}
+                  />
+                </button>
               </div>
-            ))}
-          </div>
-        )}
 
-        {/* 输入框主容器：适配深浅双色，浅色纯净白底细微灰边框，深色深邃暗黑 */}
-        <PromptInput
+              {/* 展开状态下的排队任务列表 */}
+              {!isQueueCollapsed && (
+                <div className="mt-1.5 space-y-1 max-h-[140px] overflow-y-auto scrollbar-thin">
+                  {queuedMessages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className="group flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-colors hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+                        {/* 状态空心圆指示器（对齐截图中的 ◯） */}
+                        <span className="size-3.5 rounded-full border-[1.5px] border-zinc-400 dark:border-zinc-500 shrink-0" />
+                        <span className="truncate font-mono text-zinc-800 dark:text-zinc-200 text-[12.5px]">
+                          {msg.text || (msg.attachments.length > 0 ? `[包含 ${msg.attachments.length} 个附件]` : "")}
+                        </span>
+                      </div>
+
+                      {/* 操作按钮区 */}
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {/* 撤回编辑 */}
+                        <button
+                          type="button"
+                          onClick={() => handleEditQueued(msg)}
+                          title="撤回并编辑"
+                          className="size-6 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-900 hover:bg-zinc-300/50 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <SquarePenIcon className="size-3.5" />
+                        </button>
+                        {/* 立即引导/发送 */}
+                        <button
+                          type="button"
+                          onClick={() => handleSendQueuedNow(msg)}
+                          title="立即引导（打断当前回复并立即发送）"
+                          className="size-6 flex items-center justify-center rounded text-emerald-600 hover:bg-emerald-100/60 dark:text-emerald-400 dark:hover:bg-emerald-950/50 transition-colors"
+                        >
+                          <ArrowUpIcon className="size-3.5" />
+                        </button>
+                        {/* 删除/停止排队（对齐截图中的停止小方块/删除） */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteQueued(msg.id)}
+                          title="删除排队任务"
+                          className="size-6 flex items-center justify-center rounded text-zinc-500 hover:text-red-500 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2Icon className="size-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 输入框主容器：适配深浅双色，浅色纯净白底细微灰边框，深色深邃暗黑 */}
+          <PromptInput
             onSubmit={handleSubmit}
             accept={ACCEPTED_ATTACHMENT_TYPES}
             multiple
@@ -665,7 +698,7 @@ function ChatInputContent({
             maxFiles={MAX_ATTACHMENT_COUNT}
             maxFileSize={MAX_ATTACHMENT_SIZE}
             onError={handleAttachmentError}
-            className="chat-prompt-input rounded-2xl border transition-colors overflow-visible outline-none shadow-xs bg-white border-zinc-200 focus-within:border-zinc-400 focus-within:ring-0 dark:border-zinc-800/80 dark:bg-zinc-950/70 dark:focus-within:border-zinc-600 dark:shadow-none"
+            className="chat-prompt-input relative z-10 rounded-2xl border transition-colors overflow-visible outline-none shadow-xs bg-white border-zinc-200 focus-within:border-zinc-400 focus-within:ring-0 dark:border-zinc-800/80 dark:bg-zinc-950 dark:focus-within:border-zinc-600 dark:shadow-none"
           >
             <PromptInputHeader className="px-3 pt-3">
               <PromptInputAttachmentsDisplay onPreview={setPreviewAttachment} />
@@ -970,6 +1003,7 @@ function ChatInputContent({
               {attachmentError}
             </p>
           )}
+        </div>
 
         {/* Token 与耗时统计条：移至输入框最下方展示 */}
         <div className="mt-2 px-1">
