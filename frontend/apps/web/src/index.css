@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* 设计令牌：深色工作台基调，活动卡片用色需与状态语义区分。 */
 @theme {
   --color-surface-0: #0b0d12;
@@ -778,4 +780,58 @@ html.light aside textarea {
   border-color: #cbd5e1 !important;
   color: #0f172a !important;
 }
+
+/* ================= Todo 待办列表组件浅色模式深度适配 ================= */
+html.light .todo-card-container,
+html.light [data-slot="queue"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light .todo-card-trigger,
+html.light [data-slot="queue-section-trigger"] {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light .todo-card-trigger:hover,
+html.light [data-slot="queue-section-trigger"]:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.light .todo-card-item:hover,
+html.light [data-slot="queue-item"]:hover {
+  background-color: #f8fafc !important;
+}
+
+/* ================= 排队提示词卡片浅色模式适配 ================= */
+html.light .queued-message-card {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light .queued-message-card svg {
+  color: #64748b !important;
+}
+
+html.light .queued-message-card span {
+  color: #0f172a !important;
+}
+
+html.light .queued-message-card button {
+  color: #64748b !important;
+}
+
+html.light .queued-message-card button:hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+
 

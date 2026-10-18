@@ -183,7 +183,7 @@ function PromptInputActionsRight({
             console.log("[Queue] Queue button clicked in PromptInputActionsRight");
             onQueue();
           }}
-          className="flex items-center gap-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11.5px] font-medium transition-colors border border-zinc-700/60 shadow-xs cursor-pointer select-none whitespace-nowrap shrink-0"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-medium transition-colors border shadow-xs cursor-pointer select-none whitespace-nowrap shrink-0 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-700/60"
           title="排队：等待当前模型回复完成后自动接着发送 (Enter)"
         >
           <span>排队</span>
@@ -197,7 +197,7 @@ function PromptInputActionsRight({
             e.stopPropagation();
             onSteer();
           }}
-          className="flex items-center gap-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 px-2 py-1 text-[11.5px] font-medium transition-colors shadow-xs cursor-pointer select-none whitespace-nowrap shrink-0"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-medium transition-colors border shadow-xs cursor-pointer select-none whitespace-nowrap shrink-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/25 dark:text-emerald-300 dark:border-emerald-500/35"
           title="立即引导：打断当前正在生成的回复，并立即发送新指令 (Ctrl+Enter)"
         >
           <ArrowUpIcon className="size-3.5" />
@@ -209,9 +209,9 @@ function PromptInputActionsRight({
           type="button"
           onClick={onStop}
           title="停止当前回复"
-          className="size-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+          className="size-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-red-500 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors shrink-0"
         >
-          <span className="size-2.5 rounded-xs bg-red-400" />
+          <span className="size-2.5 rounded-xs bg-red-500 dark:bg-red-400" />
         </button>
       </div>
     );
@@ -482,7 +482,7 @@ function ChatInputContent({
   const currentWorkspacePath = isDirectChat ? "" : workspaceRoot;
 
   return (
-    <div className="shrink-0 bg-black px-4 py-4">
+    <div className="shrink-0 bg-white dark:bg-black px-4 py-4 transition-colors">
       <div className="mx-auto w-full max-w-3xl">
         <div className="mb-2 flex min-w-0 items-center gap-2">
           {/* 工作区选择器保持在左侧 */}
@@ -496,13 +496,13 @@ function ChatInputContent({
                 setIsModelDropdownOpen(false);
                 setIsEffortDropdownOpen(false);
               }}
-              className="group inline-flex items-center gap-1.5 rounded-xl bg-transparent hover:bg-zinc-900/80 px-2.5 py-1 text-[13px] font-medium text-zinc-100 transition-colors select-none max-w-[280px] border-0 outline-none"
+              className="group inline-flex items-center gap-1.5 rounded-xl bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/80 px-2.5 py-1 text-[13px] font-medium text-zinc-800 dark:text-zinc-100 transition-colors select-none max-w-[280px] border-0 outline-none"
               title={isDirectChat ? "当前为直接聊天模式（无工作区）" : `当前工作区：${currentWorkspacePath}`}
             >
               {isDirectChat ? (
-                <MessageSquareIcon className="size-4 text-zinc-300 shrink-0" />
+                <MessageSquareIcon className="size-4 text-zinc-600 dark:text-zinc-300 shrink-0" />
               ) : (
-                <FolderIcon className="size-4 text-zinc-300 shrink-0" />
+                <FolderIcon className="size-4 text-zinc-600 dark:text-zinc-300 shrink-0" />
               )}
               <span className="truncate">
                 {isDirectChat ? "直接聊天" : currentWorkspaceName}
@@ -510,14 +510,14 @@ function ChatInputContent({
               <ChevronDownIcon
                 className={cn(
                   "size-3.5 text-zinc-400 shrink-0 transition-transform duration-200 ml-0.5",
-                  isWorkspaceDropdownOpen && "rotate-180 text-zinc-200",
+                  isWorkspaceDropdownOpen && "rotate-180 text-zinc-600 dark:text-zinc-200",
                 )}
               />
             </button>
 
-            {/* 下拉菜单面板（大圆角、深灰底、无多余线条、移动悬浮高亮） */}
+            {/* 下拉菜单面板（适配深浅双色：浅色白底微边框、深色暗黑深邃底） */}
             {isWorkspaceDropdownOpen && (
-              <div className="workspace-dropdown-panel absolute left-0 bottom-full mb-2 z-50 w-64 rounded-2xl bg-[#242427] p-1.5 shadow-2xl border-0 animate-in fade-in zoom-in-95 duration-100">
+              <div className="workspace-dropdown-panel absolute left-0 bottom-full mb-2 z-50 w-64 rounded-2xl bg-white border border-zinc-200 text-zinc-800 shadow-xl dark:bg-[#242427] dark:border-0 dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
                 {/* 选项 1：直接聊天模式 */}
                 <button
                   type="button"
@@ -528,13 +528,13 @@ function ChatInputContent({
                   className={cn(
                     "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
                     isDirectChat
-                      ? "bg-[#2f2f35] text-white font-medium"
-                      : "text-zinc-200 hover:bg-[#2f2f35] hover:text-white",
+                      ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                      : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white",
                   )}
                 >
-                  <MessageSquareIcon className="size-4 text-zinc-300 shrink-0" />
+                  <MessageSquareIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
                   <span className="truncate">直接聊天</span>
-                  {isDirectChat && <CheckIcon className="size-4 text-white shrink-0 ml-auto" />}
+                  {isDirectChat && <CheckIcon className="size-4 text-zinc-900 dark:text-white shrink-0 ml-auto" />}
                 </button>
 
                 {/* 选项 2..N：工作区列表（无多余分割线，干净紧凑排列） */}
@@ -557,13 +557,13 @@ function ChatInputContent({
                             className={cn(
                               "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
                               isSelected
-                                ? "bg-[#2f2f35] text-white font-medium"
-                                : "text-zinc-200 hover:bg-[#2f2f35] hover:text-white",
+                                ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white",
                             )}
                           >
-                            <FolderIcon className="size-4 text-zinc-300 shrink-0" />
+                            <FolderIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
                             <span className="truncate">{name}</span>
-                            {isSelected && <CheckIcon className="size-4 text-white shrink-0 ml-auto" />}
+                            {isSelected && <CheckIcon className="size-4 text-zinc-900 dark:text-white shrink-0 ml-auto" />}
                           </button>
                         );
                       })
@@ -577,9 +577,9 @@ function ChatInputContent({
                     setIsWorkspaceDropdownOpen(false);
                     onOpenFolderPicker?.();
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-zinc-200 hover:bg-[#2f2f35] hover:text-white transition-colors select-none"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white transition-colors select-none"
                 >
-                  <PlusIcon className="size-4 text-zinc-300 shrink-0" />
+                  <PlusIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
                   <span className="truncate">添加工作区...</span>
                 </button>
               </div>
@@ -594,13 +594,13 @@ function ChatInputContent({
           ) : null}
         </div>
 
-        {/* 排队消息列表（完全对齐用户上传图片样式） */}
+        {/* 排队消息列表（完全对齐用户上传图片样式，适配深浅双色） */}
         {queuedMessages.length > 0 && (
           <div className="mb-2 space-y-1.5 animate-in fade-in slide-in-from-bottom-1 duration-150">
             {queuedMessages.map((msg) => (
               <div
                 key={msg.id}
-                className="group flex items-center justify-between rounded-xl bg-[#242427] dark:bg-[#1f1f23] border border-zinc-700/60 dark:border-zinc-800/80 px-3.5 py-2 text-zinc-100 shadow-md transition-all"
+                className="queued-message-card group flex items-center justify-between rounded-xl border px-3.5 py-2 transition-all shadow-xs bg-white border-zinc-200 text-zinc-800 dark:bg-[#1f1f23] dark:border-zinc-800/80 dark:text-zinc-100 dark:shadow-md"
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
                   <svg
@@ -608,7 +608,7 @@ function ChatInputContent({
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="1.8"
-                    className="size-4 shrink-0 text-zinc-400"
+                    className="size-4 shrink-0 text-zinc-500 dark:text-zinc-400"
                     aria-hidden="true"
                   >
                     <path
@@ -617,18 +617,18 @@ function ChatInputContent({
                       d="M8.5 10.5h7m-7 3h4.5M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-3.64-.69L3 21l1.45-3.62A7.854 7.854 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                     />
                   </svg>
-                  <span className="truncate text-[13px] text-zinc-200 font-normal select-text">
+                  <span className="truncate text-[13px] font-normal select-text text-zinc-800 dark:text-zinc-200">
                     {msg.text || (msg.attachments.length > 0 ? `[包含 ${msg.attachments.length} 个附件]` : "")}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1 shrink-0 text-zinc-400">
+                <div className="flex items-center gap-1 shrink-0 text-zinc-500 dark:text-zinc-400">
                   {/* 撤回编辑 */}
                   <button
                     type="button"
                     onClick={() => handleEditQueued(msg)}
                     title="撤回并编辑"
-                    className="size-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 transition-colors"
+                    className="size-7 flex items-center justify-center rounded-lg transition-colors text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-700/50"
                   >
                     <SquarePenIcon className="size-3.5" />
                   </button>
@@ -637,7 +637,7 @@ function ChatInputContent({
                     type="button"
                     onClick={() => handleDeleteQueued(msg.id)}
                     title="删除排队消息"
-                    className="size-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    className="size-7 flex items-center justify-center rounded-lg transition-colors text-zinc-500 hover:text-red-500 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-500/10"
                   >
                     <Trash2Icon className="size-3.5" />
                   </button>
@@ -646,7 +646,7 @@ function ChatInputContent({
                     type="button"
                     onClick={() => handleSendQueuedNow(msg)}
                     title="立即引导（打断当前回复并立即发送）"
-                    className="size-7 flex items-center justify-center rounded-lg text-zinc-300 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                    className="size-7 flex items-center justify-center rounded-lg transition-colors text-emerald-600 hover:bg-emerald-50 dark:text-zinc-300 dark:hover:text-emerald-400 dark:hover:bg-emerald-500/10"
                   >
                     <ArrowUpIcon className="size-3.5" />
                   </button>
@@ -656,7 +656,7 @@ function ChatInputContent({
           </div>
         )}
 
-        {/* 纯暗黑极简边框：无任何刺眼白色外框，深邃内敛 */}
+        {/* 输入框主容器：适配深浅双色，浅色纯净白底细微灰边框，深色深邃暗黑 */}
         <PromptInput
             onSubmit={handleSubmit}
             accept={ACCEPTED_ATTACHMENT_TYPES}
@@ -665,7 +665,7 @@ function ChatInputContent({
             maxFiles={MAX_ATTACHMENT_COUNT}
             maxFileSize={MAX_ATTACHMENT_SIZE}
             onError={handleAttachmentError}
-            className="chat-prompt-input rounded-2xl border border-zinc-800/80 bg-zinc-950/70 shadow-none focus-within:border-zinc-600 focus-within:ring-0 transition-colors overflow-visible outline-none"
+            className="chat-prompt-input rounded-2xl border transition-colors overflow-visible outline-none shadow-xs bg-white border-zinc-200 focus-within:border-zinc-400 focus-within:ring-0 dark:border-zinc-800/80 dark:bg-zinc-950/70 dark:focus-within:border-zinc-600 dark:shadow-none"
           >
             <PromptInputHeader className="px-3 pt-3">
               <PromptInputAttachmentsDisplay onPreview={setPreviewAttachment} />
@@ -682,7 +682,7 @@ function ChatInputContent({
                       ? "输入提示词...（Enter 排队，Ctrl+Enter 立即引导）"
                       : "输入任务描述...（Enter 发送，Shift+Enter 换行）"
                 }
-                className="chat-prompt-textarea min-h-[50px] max-h-[220px] px-3.5 py-2.5 text-[13.5px] text-zinc-100 placeholder:text-zinc-600 focus:outline-none border-0 shadow-none focus-visible:ring-0 bg-transparent"
+                className="chat-prompt-textarea min-h-[50px] max-h-[220px] px-3.5 py-2.5 text-[13.5px] focus:outline-none border-0 shadow-none focus-visible:ring-0 bg-transparent text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
               />
             </PromptInputBody>
 
