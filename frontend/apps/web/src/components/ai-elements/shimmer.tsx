@@ -1,26 +1,29 @@
 "use client";
 
 /**
- * 官方 AI SDK Elements Shimmer 组件实现。
- * 参考：https://elements.ai-sdk.dev/components/shimmer
+ * shadcn/ui Shimmer 特效组件实现（带 color 彩色微光）。
+ * 遵循 shadcn 官方规范：https://ui.shadcn.com/docs/utils/shimmer
  *
  * 核心特性：
- * 1. 使用 motion/react 的 motion.create 创建可多态渲染的微光组件；
- * 2. 默认使用 span，彻底解决嵌入在 button/CollapsibleTrigger 时的 HTML 嵌套冲突；
- * 3. 亮白高光从右向左匀速扫过暗灰文字表面，呈现流畅细腻的加载/思考动效。
+ * 1. 采用纯 CSS / Tailwind 的 background-clip: text 与 tw-shimmer 渐变关键帧流动；
+ * 2. 默认搭载 shadcn 官方带 color 辉光效果（支持通过 color 属性或 shimmer-color-* 自定义）；
+ * 3. 完美兼容多态渲染（默认 as="span"），防止在按钮/折叠标签内出现非法嵌套；
+ * 4. 深度适配黑白双色主题（Light / Dark），浅色高质感科技蓝、深色绚丽灵动电光青。
  */
 
 import { cn } from "@/lib/utils";
-import { motion, type MotionStyle } from "motion/react";
 import type { ComponentProps, ElementType, ReactNode } from "react";
-import { useMemo } from "react";
 
 export type ShimmerProps<T extends ElementType = "span"> = {
   as?: T;
-  children: string;
+  children: ReactNode;
   className?: string;
+  /** 动画周期秒数，默认 2s */
   duration?: number;
+  /** 高光散布宽度 */
   spread?: number;
+  /** 高光色彩，默认使用 shadcn 官方风格的彩色微光 (如 #378ADD / blue-500) */
+  color?: string;
 } & Omit<ComponentProps<T>, "as" | "children">;
 
 export const Shimmer = <T extends ElementType = "span">({
@@ -28,49 +31,30 @@ export const Shimmer = <T extends ElementType = "span">({
   children,
   className,
   duration = 2,
-  spread = 2,
+  spread,
+  color,
   style,
   ...props
 }: ShimmerProps<T>) => {
-  const Component = (as || "span") as any;
-  const MotionComponent = useMemo(() => motion.create(Component), [Component]);
-
-  const dynamicSpread = useMemo(() => {
-    return (children?.length ?? 0) * spread;
-  }, [children, spread]);
-
-  const combinedStyle: MotionStyle = {
-    ...style,
-    // @ts-expect-error motion supports custom CSS properties in style
-    "--spread": `${dynamicSpread}px`,
-    backgroundImage:
-      "var(--bg), linear-gradient(var(--color-muted-foreground,#71717a), var(--color-muted-foreground,#71717a))",
-  };
+  const Component = (as || "span") as ElementType;
 
   return (
-    <MotionComponent
-      animate={{
-        backgroundPosition: ["100% center", "0% center"],
-      }}
+    <Component
       className={cn(
-        "relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent",
-        "[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--color-foreground,#ffffff),#0000_calc(50%+var(--spread)))]",
-        "[background-repeat:no-repeat,padding-box]",
+        "shimmer inline-block select-none font-medium",
+        // 官方带 color 变体：应用官方 #378ADD 经典彩辉，并适配深浅主题
+        "shimmer-color-[#378ADD]",
         className
       )}
-      initial={{
-        backgroundPosition: "100% center",
-      }}
-      style={combinedStyle}
-      transition={{
-        duration,
-        ease: "linear",
-        repeat: Number.POSITIVE_INFINITY,
-      }}
+      style={{
+        ...style,
+        ...(duration ? { "--shimmer-duration": `${duration}s` } : {}),
+        ...(spread ? { "--shimmer-spread": `${spread}ch` } : {}),
+        ...(color ? { "--shimmer-color": color } : {}),
+      } as React.CSSProperties}
       {...(props as any)}
     >
       {children}
-    </MotionComponent>
+    </Component>
   );
 };
-
