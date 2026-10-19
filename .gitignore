@@ -16,3 +16,4 @@ dist/
 sessions/
 agent-file-memory/
 *.local.md
+frontend/apps/web/pnpm-lock.yaml
