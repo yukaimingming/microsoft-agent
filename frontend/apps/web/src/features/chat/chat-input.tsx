@@ -596,18 +596,18 @@ function ChatInputContent({
           ) : null}
         </div>
 
-        {/* 输入框与背面折叠排队卡片组合层（对齐用户上传图片：折叠卡片在输入框背面露出） */}
-        <div
-          className={cn(
-            "queued-stacked-wrapper relative w-full transition-all duration-200",
-            queuedMessages.length > 0
-              ? "rounded-[22px] bg-[#edf0f4] border border-zinc-300/80 p-2 dark:bg-[#1c1d22] dark:border-zinc-800 shadow-xs"
-              : ""
-          )}
-        >
-          {/* 背部折叠卡片区域（当有排队任务时展示在输入框背面） */}
+        {/* 输入框与背面折叠排队卡片组合层（背面折叠卡片仅在输入框上方露出，杜绝任何尖角） */}
+        <div className="relative w-full">
+          {/* 背部折叠卡片（仅从输入框上方/背面探出，左右微缩以确保四角完全露出为优美圆角） */}
           {queuedMessages.length > 0 && (
-            <div className="queued-stacked-header px-2.5 pt-1.5 pb-2.5 select-none animate-in fade-in duration-150">
+            <div
+              className={cn(
+                "queued-behind-card relative z-0 mx-2 -mb-5 transition-all duration-200 select-none",
+                "rounded-2xl border border-zinc-300/80 dark:border-zinc-800 shadow-xs",
+                "bg-[#edf0f4] text-zinc-800 dark:bg-[#1c1d22] dark:text-zinc-200",
+                "px-3.5 pt-2.5 pb-7",
+              )}
+            >
               {/* 顶部标题栏：折叠/展开 */}
               <div
                 className="flex items-center justify-between cursor-pointer py-0.5"

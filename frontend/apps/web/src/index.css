@@ -833,34 +833,30 @@ html.light .queued-message-card button:hover {
   color: #0f172a !important;
 }
 
-/* ================= 排队折叠卡片（背面折叠卡片样式）深浅双色主题适配 ================= */
-html.light .queued-stacked-wrapper {
+/* ================= 排队折叠卡片（背面抽屉卡片样式）深浅双色主题适配 ================= */
+html.light .queued-behind-card {
   background-color: #edf0f4 !important;
   border-color: #cbd5e1 !important;
 }
 
-html.light .queued-stacked-header {
-  color: #1e293b !important;
-}
-
-html.light .queued-stacked-header span {
+html.light .queued-behind-card span {
   color: #334155 !important;
 }
 
-html.light .queued-stacked-header button {
+html.light .queued-behind-card button {
   color: #64748b !important;
 }
 
-html.light .queued-stacked-header button:hover {
+html.light .queued-behind-card button:hover {
   color: #0f172a !important;
 }
 
-html.dark .queued-stacked-wrapper {
+html.dark .queued-behind-card {
   background-color: #1c1d22 !important;
   border-color: #27272a !important;
 }
 
-html.dark .queued-stacked-header span {
+html.dark .queued-behind-card span {
   color: #e4e4e7 !important;
 }
 

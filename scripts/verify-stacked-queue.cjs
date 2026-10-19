@@ -45,7 +45,7 @@ const { chromium } = require(path.resolve('./frontend/node_modules/playwright'))
 
   // 4. 捕获深色模式下的效果（展开态）
   console.log('📸 截图深色模式（Dark）展开态...');
-  const composerArea = page.locator('.queued-stacked-wrapper');
+  const composerArea = page.locator('.chat-prompt-input').locator('xpath=..');
   if (await composerArea.count() > 0) {
     await composerArea.screenshot({ path: 'screenshots/stacked_queue_dark_expanded.png' });
   }
