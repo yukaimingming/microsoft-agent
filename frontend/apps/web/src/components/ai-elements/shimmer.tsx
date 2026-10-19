@@ -42,8 +42,8 @@ export const Shimmer = <T extends ElementType = "span">({
     <Component
       className={cn(
         "shimmer inline-block select-none font-medium",
-        // 官方带 color 变体：应用官方 #378ADD 经典彩辉，并适配深浅主题
-        "shimmer-color-[#378ADD]",
+        // 官方带 color 变体：应用官方指定的柔和半透明 shimmer-color-blue-500/60
+        "shimmer-color-blue-500/60",
         className
       )}
       style={{

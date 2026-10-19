@@ -28,12 +28,12 @@ const { chromium } = require(path.resolve('./frontend/node_modules/playwright'))
       demoWrapper.className = 'w-full my-6 p-5 rounded-2xl border border-zinc-800 bg-[#0f1013] text-zinc-100 dark:border-zinc-800 dark:bg-[#0f1013]';
       demoWrapper.innerHTML = `
         <div class="text-xs text-zinc-400 mb-3 font-semibold tracking-wider uppercase">
-          shadcn shimmer (带 color: #378ADD / blue-500) 特效展示
+          shadcn shimmer (带 color: blue-500/60) 特效展示
         </div>
         
         <!-- 时间线顶部标题 -->
         <div class="flex items-center gap-2 border-b border-zinc-800/80 pb-2.5 mb-4 text-[13px]">
-          <span class="shimmer shimmer-color-[#378ADD] font-medium text-[14px]">
+          <span class="shimmer shimmer-color-blue-500/60 font-medium text-[14px]">
             正在分析中，用时 0分12秒
           </span>
           <span class="ml-auto text-xs text-zinc-500">时间线总标题</span>
@@ -44,7 +44,7 @@ const { chromium } = require(path.resolve('./frontend/node_modules/playwright'))
           <!-- 思考过程 -->
           <div class="flex items-center gap-2">
             <span class="size-2 rounded-full bg-blue-500/80 animate-ping"></span>
-            <span class="shimmer shimmer-color-[#378ADD] font-medium">
+            <span class="shimmer shimmer-color-blue-500/60 font-medium">
               思考：深入对比快速排序与堆排序的内存缓存命中率与最坏复杂度
             </span>
           </div>
@@ -52,7 +52,7 @@ const { chromium } = require(path.resolve('./frontend/node_modules/playwright'))
           <!-- 工具执行过程 -->
           <div class="flex items-center gap-2">
             <span class="size-2 rounded-full bg-sky-400"></span>
-            <span class="shimmer shimmer-color-[#378ADD] font-medium">
+            <span class="shimmer shimmer-color-blue-500/60 font-medium">
               正在执行命令：pnpm --filter @deepagent/web typecheck
             </span>
           </div>
@@ -60,7 +60,7 @@ const { chromium } = require(path.resolve('./frontend/node_modules/playwright'))
           <!-- 子任务调度过程 -->
           <div class="flex items-center gap-2">
             <span class="size-2 rounded-full bg-indigo-400"></span>
-            <span class="shimmer shimmer-color-[#378ADD] font-medium">
+            <span class="shimmer shimmer-color-blue-500/60 font-medium">
               正在派发子任务：分析工业级标准库 introsort 的混合策略
             </span>
           </div>

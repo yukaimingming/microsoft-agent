@@ -874,7 +874,7 @@ html.dark .queued-behind-card span {
 .shimmer {
   --shimmer-duration: 2.2s;
   --shimmer-base: #94a3b8;
-  --shimmer-color: #38bdf8;
+  --shimmer-color: rgba(59, 130, 246, 0.6);
   display: inline-block;
   background-clip: text;
   -webkit-background-clip: text;
@@ -891,26 +891,35 @@ html.dark .queued-behind-card span {
   );
 }
 
-/* 浅色主题下的带 color 高光微调：清澈明亮的宝石科技蓝 */
+/* 浅色主题下的带 color 高光微调：柔和晶莹的 blue-500/60 科技蓝 */
 html.light .shimmer {
   --shimmer-base: #64748b;
-  --shimmer-color: #2563eb;
+  --shimmer-color: rgba(37, 99, 235, 0.6);
 }
 
-/* 深色主题下的带 color 高光微调：灵动明艳的电光天蓝 */
+/* 深色主题下的带 color 高光微调：灵动柔美的 blue-500/60 电光蓝 */
 html.dark .shimmer {
   --shimmer-base: #94a3b8;
-  --shimmer-color: #38bdf8;
+  --shimmer-color: rgba(96, 165, 250, 0.65);
 }
 
-/* 支持通过类名定制特定色彩 */
+/* 支持通过类名定制特定色彩：优先支持用户指定的 blue-500/60 */
+.shimmer-color-blue-500\/60,
+.shimmer-color-blue-500 {
+  --shimmer-color: rgba(59, 130, 246, 0.6) !important;
+}
+
+html.dark .shimmer-color-blue-500\/60 {
+  --shimmer-color: rgba(96, 165, 250, 0.65) !important;
+}
+
+html.light .shimmer-color-blue-500\/60 {
+  --shimmer-color: rgba(37, 99, 235, 0.6) !important;
+}
+
 .shimmer-color-\[\#378ADD\],
 .shimmer-color-blue {
   --shimmer-color: #378ADD !important;
-}
-
-.shimmer-color-blue-500 {
-  --shimmer-color: #3b82f6 !important;
 }
 
 .shimmer-color-cyan {
