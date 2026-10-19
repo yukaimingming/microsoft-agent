@@ -31,6 +31,7 @@ import {
   SunIcon,
   MoonIcon,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import type { FolderGroup, SessionSummary } from "./use-sessions.js";
 import { FolderPickerModal } from "./folder-picker-modal.js";
 
@@ -248,7 +249,9 @@ export function WorkspaceSidebar({
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isSessionRunning ? (
-            <span className="size-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="正在执行中" />
+            <span title="正在执行中" className="inline-flex shrink-0">
+              <Spinner className="size-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+            </span>
           ) : (
             <MessageSquareIcon
               className={`size-3.5 shrink-0 transition-colors ${

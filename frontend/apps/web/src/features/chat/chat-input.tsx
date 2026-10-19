@@ -105,6 +105,10 @@ interface ChatInputProps {
   /** 当前会话最近一份待办计划。 */
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
+  /** 是否已配置可用大模型提供商（API Key 与模型有效） */
+  isProviderConfigured?: boolean;
+  /** 尝试发送但在未配置 API 厂商时被拦截的回调 */
+  onBlockedSend?: (status: string) => void;
 }
 
 const PERMISSION_OPTIONS: Array<{
@@ -253,6 +257,8 @@ function ChatInputContent({
   todoActivity,
   permissionMode,
   onPermissionModeChange,
+  isProviderConfigured = true,
+  onBlockedSend,
 }: ChatInputProps) {
   const controller = usePromptInputController();
   const [text, setText] = useState("");
@@ -283,6 +289,10 @@ function ChatInputContent({
 
   // 排队（将当前文本放入排队队列）
   const handleQueueMessage = (customText?: string, customFiles?: ChatAttachment[]) => {
+    if (!isProviderConfigured) {
+      onBlockedSend?.(modelStatus || "未配置提供商");
+      return;
+    }
     const inputVal = customText !== undefined ? customText : (controller.textInput.value || text || "");
     const content = inputVal.trim();
     const files = customFiles ?? [];
@@ -301,6 +311,10 @@ function ChatInputContent({
 
   // 立即引导（打断当前正在回复的模型并立即发送新指令）
   const handleSteerNow = (customText?: string, customFiles?: ChatAttachment[]) => {
+    if (!isProviderConfigured) {
+      onBlockedSend?.(modelStatus || "未配置提供商");
+      return;
+    }
     const inputVal = customText !== undefined ? customText : (controller.textInput.value || text || "");
     const content = inputVal.trim();
     const files = customFiles ?? [];
@@ -384,6 +398,14 @@ function ChatInputContent({
       if (isCmdOrCtrl && !hasText && queuedMessages.length > 0) {
         e.preventDefault();
         handleFlushQueuedMessages();
+        return;
+      }
+
+      // 未配置大模型提供商时按 Enter 拦截并弹出警告提醒
+      if (!isProviderConfigured && !e.shiftKey && hasText) {
+        e.preventDefault();
+        onBlockedSend?.(modelStatus || "未配置提供商");
+        return;
       }
     }
   };
@@ -448,7 +470,12 @@ function ChatInputContent({
   const handleSubmit = (message: PromptInputMessage) => {
     const content = (message.text || controller.textInput.value || text).trim();
     const attachments = message.files;
-    if ((content.length > 0 || attachments.length > 0) && !isRunning && !disabled) {
+    if ((content.length > 0 || attachments.length > 0) && !isRunning) {
+      if (!isProviderConfigured) {
+        onBlockedSend?.(modelStatus || "未配置提供商");
+        return;
+      }
+      if (disabled) return;
       const totalBytes = attachments.reduce((total, file) => {
         const payload = file.url.match(/^data:[^;,]+;base64,([\s\S]+)$/)?.[1] ?? "";
         return total + Math.floor((payload.length * 3) / 4);

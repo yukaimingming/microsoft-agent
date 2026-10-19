@@ -31,7 +31,7 @@ import { useProviderSettings } from "./features/settings/use-provider-settings.j
 import { useTheme } from "./features/settings/use-theme.js";
 import { useSessions, normalizePath, type SessionSummary } from "./features/chat/use-sessions.js";
 import { FolderPickerModal } from "./features/chat/folder-picker-modal.js";
-import { PanelLeftIcon, AlertCircleIcon, PanelRightIcon, SunIcon, MoonIcon } from "lucide-react";
+import { PanelLeftIcon, AlertCircleIcon, PanelRightIcon, SunIcon, MoonIcon, AlertTriangleIcon } from "lucide-react";
 import { ReviewSidebar } from "./features/review/review-sidebar.js";
 
 /** AG-UI 服务端地址：走代理或直接连接。 */
@@ -69,6 +69,8 @@ export function App() {
   }, [state.activities]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 未配置API提供商拦截警告弹窗
+  const [isMissingProviderAlertOpen, setIsMissingProviderAlertOpen] = useState(false);
 
   // 侧边栏折叠/展开
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
@@ -325,9 +327,13 @@ export function App() {
 
   const modelStatusKind: "ok" | "warn" | "error" = canSend ? "ok" : "error";
 
-  // 发送消息
+  // 发送消息（未配置有效模型提供商时拦截并弹窗警告）
   const handleSend = useCallback(
     (content: string, attachments: ChatAttachment[] = []): void => {
+      if (!canSend) {
+        setIsMissingProviderAlertOpen(true);
+        return;
+      }
       void send(content, {
         providerId: settings.activeProviderId ?? undefined,
         modelId: currentModelId ?? undefined,
@@ -336,7 +342,7 @@ export function App() {
         permissionMode,
       }, attachments);
     },
-    [send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode],
+    [canSend, send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode],
   );
 
   // 新建会话
@@ -699,7 +705,8 @@ export function App() {
             requestedEffort={settings.effort}
             modelStatus={modelStatus}
             modelStatusKind={modelStatusKind}
-            disabled={!canSend}
+            isProviderConfigured={canSend}
+            onBlockedSend={() => setIsMissingProviderAlertOpen(true)}
             availableModels={allAvailableModels}
             currentModel={currentModelId}
             onSelectModel={(model: string) => settings.setActiveModelId(model)}
@@ -754,6 +761,89 @@ export function App() {
         theme={theme}
         onThemeChange={setTheme}
       />
+
+      {/* 未配置API厂商拦截警告弹窗（黑白双主题深度自适应） */}
+      <MissingProviderAlertModal
+        open={isMissingProviderAlertOpen}
+        onClose={() => setIsMissingProviderAlertOpen(false)}
+        onOpenSettings={() => {
+          setIsMissingProviderAlertOpen(false);
+          setSettingsOpen(true);
+        }}
+        statusText={modelStatus}
+      />
+    </div>
+  );
+}
+
+/**
+ * 未配置 API 提供商拦截警告弹窗组件。
+ * 深度适配黑白双色主题，提供友好说明与一键打开配置指引。
+ */
+function MissingProviderAlertModal({
+  open,
+  onClose,
+  onOpenSettings,
+  statusText,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onOpenSettings: () => void;
+  statusText?: string;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-150 select-none"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl dark:border-zinc-800 dark:bg-[#1c1d22] dark:text-zinc-100 transition-colors animate-in zoom-in-95 duration-150"
+      >
+        <div className="flex items-start gap-3.5">
+          <div className="size-10 rounded-full bg-amber-500/15 text-amber-600 dark:bg-amber-400/15 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <AlertTriangleIcon className="size-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[15.5px] font-semibold text-zinc-900 dark:text-zinc-100">
+              未配置 API 厂商
+            </h3>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+              检测到当前尚未配置有效的大模型提供商或未填写 API Key，无法发送消息发起对话。
+            </p>
+            {statusText && (
+              <div className="mt-2.5 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-mono text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800">
+                当前状态：<span className="text-amber-600 dark:text-amber-400 font-medium">{statusText}</span>
+              </div>
+            )}
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              请先在设置中添加或启用模型提供商（如 DeepSeek、OpenAI、SiliconFlow 等）并填入 API Key。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-3.5 py-1.5 text-[13px] font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white transition-colors cursor-pointer"
+          >
+            我知道了
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="rounded-xl bg-zinc-900 px-4 py-1.5 text-[13px] font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white transition-colors cursor-pointer shadow-xs"
+          >
+            前往配置提供商
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
