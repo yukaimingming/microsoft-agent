@@ -4,7 +4,9 @@ import {
   BrainCircuitIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
+  ExternalLinkIcon,
   FileSearchIcon,
+  GlobeIcon,
   ListTodoIcon,
   PencilLineIcon,
   TerminalIcon,
@@ -58,6 +60,11 @@ const TOOL_ACTIONS: Record<string, string> = {
   glob: "查找了文件",
   grep: "搜索了文件",
   delete_file: "删除了文件",
+  web_search: "搜索了网络",
+  search_web: "搜索了网络",
+  web_search_exa: "搜索了网络",
+  web_fetch_exa: "抓取了网页",
+  web_fetch: "抓取了网页",
 };
 
 const ACTIVE_TOOL_ACTIONS: Record<string, string> = {
@@ -71,6 +78,11 @@ const ACTIVE_TOOL_ACTIONS: Record<string, string> = {
   glob: "正在查找文件",
   grep: "正在搜索文件",
   delete_file: "正在删除文件",
+  web_search: "正在搜索网络",
+  search_web: "正在搜索网络",
+  web_search_exa: "正在搜索网络",
+  web_fetch_exa: "正在抓取网页",
+  web_fetch: "正在抓取网页",
 };
 
 export function formatElapsedDuration(durationMs: number): string {
@@ -103,7 +115,8 @@ function toolInputSummary(activity: Activity): string {
   const path = get("file_path", "filePath", "path", "dir_path", "directory");
   const command = get("command", "cmd");
   const pattern = get("pattern", "regex");
-  const query = get("query", "glob");
+  const query = get("query", "glob", "q");
+  const url = get("url", "urls");
   const name = toolName(activity);
   const parts = name === "execute"
     ? [command]
@@ -111,7 +124,11 @@ function toolInputSummary(activity: Activity): string {
       ? [pattern, path]
       : name === "glob"
         ? [query, path]
-        : [path];
+        : (name.includes("search") || name === "web_search" || name === "web_search_exa")
+          ? [query || path]
+          : (name.includes("fetch") || name === "web_fetch" || name === "web_fetch_exa")
+            ? [url || path]
+            : [path];
   const summary = parts.filter(Boolean).join(" · ");
   return summary.length > 160 ? `${summary.slice(0, 157)}…` : summary;
 }
@@ -144,12 +161,96 @@ function isLiveActivity(activity: Activity): boolean {
 }
 
 function ActionGlyph({ name, className }: { name: string; className?: string }) {
+  if (name === "web_search" || name === "search_web" || name === "web_search_exa" || name === "web_fetch" || name === "web_fetch_exa" || name.includes("search") || name.includes("web")) {
+    return <GlobeIcon className={className} />;
+  }
   if (name === "execute") return <TerminalIcon className={className} />;
   if (name === "write_todos") return <PencilLineIcon className={className} />;
   if (name === "read_file" || name === "ls" || name === "grep" || name === "glob") return <FileSearchIcon className={className} />;
   if (name === "task") return <BrainCircuitIcon className={className} />;
   if (name === "delete_file") return <TriangleAlertIcon className={className} />;
   return <ListTodoIcon className={className} />;
+}
+
+export interface ExtractedSource {
+  title: string;
+  url: string;
+  snippet?: string;
+}
+
+function extractToolSources(activity: Activity): ExtractedSource[] {
+  const detail = activity.detail as { output?: unknown; input?: unknown } | undefined;
+  const sources: ExtractedSource[] = [];
+  const seenUrls = new Set<string>();
+
+  const addSource = (url: string, rawTitle?: string) => {
+    if (!url || typeof url !== "string") return;
+    const cleanUrl = url.trim().replace(/[)\],;]+$/, "");
+    if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) return;
+    if (seenUrls.has(cleanUrl)) return;
+    seenUrls.add(cleanUrl);
+
+    let host = cleanUrl;
+    try {
+      host = new URL(cleanUrl).hostname.replace(/^www\./, "");
+    } catch {
+      // 保持原样
+    }
+    sources.push({
+      title: (rawTitle && rawTitle.trim()) ? rawTitle.trim() : host,
+      url: cleanUrl,
+    });
+  };
+
+  // 1. 尝试从结构化对象提取（如 Exa results / sources / items）
+  const parseObject = (obj: unknown) => {
+    if (!obj || typeof obj !== "object") return;
+    if (Array.isArray(obj)) {
+      for (const item of obj) parseObject(item);
+      return;
+    }
+    const record = obj as Record<string, unknown>;
+    // 直接有 url 属性
+    if (typeof record.url === "string") {
+      addSource(record.url, typeof record.title === "string" ? record.title : undefined);
+    }
+    if (Array.isArray(record.results)) {
+      for (const r of record.results) parseObject(r);
+    }
+    if (Array.isArray(record.sources)) {
+      for (const s of record.sources) parseObject(s);
+    }
+  };
+
+  if (detail?.output) {
+    if (typeof detail.output === "object") {
+      parseObject(detail.output);
+    } else if (typeof detail.output === "string") {
+      try {
+        const parsed = JSON.parse(detail.output);
+        parseObject(parsed);
+      } catch {
+        // 纯文本正则匹配 URLs
+        const urlMatches = detail.output.match(/https?:\/\/[^\s"'<>]+/g);
+        if (urlMatches) {
+          for (const u of urlMatches) addSource(u);
+        }
+      }
+    }
+  }
+
+  // 2. 如果是从 input 抓取网页（web_fetch_exa 的 url/urls 参数）
+  if (sources.length === 0 && detail?.input && typeof detail.input === "object") {
+    const inputObj = detail.input as Record<string, unknown>;
+    if (typeof inputObj.url === "string") addSource(inputObj.url);
+    if (Array.isArray(inputObj.urls)) {
+      for (const u of inputObj.urls) {
+        if (typeof u === "string") addSource(u);
+      }
+    }
+  }
+
+  return sources.slice(0, 6);
 }
 
 function StreamingText({ content, streaming }: { content: string; streaming?: boolean }) {
@@ -198,6 +299,7 @@ function ToolActivityRow({
   const name = toolName(activity);
   const summaryText = toolInputSummary(activity);
   const sections = detailSections(activity);
+  const sources = extractToolSources(activity);
   const detail = activity.detail as { truncated?: unknown } | undefined;
   const tone = activity.status === "failed"
     ? "text-[var(--color-state-error)]"
@@ -214,6 +316,26 @@ function ToolActivityRow({
             {summaryText && <code className="rounded-md bg-[var(--color-surface-3)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--color-text-primary)]">{summaryText}</code>}
             <ChevronDownIcon className="ml-auto size-3.5 shrink-0 transition-transform group-open:rotate-180" />
           </summary>
+          {sources.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[11px] font-medium text-[var(--color-text-muted)]">来源引用：</span>
+              {sources.map((src, idx) => (
+                <a
+                  key={`${src.url}-${idx}`}
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-0.5 text-[11px] text-sky-600 dark:text-sky-400 transition-colors hover:border-sky-500/50 hover:bg-sky-500/20"
+                  title={`${src.title}\n${src.url}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <GlobeIcon className="size-3 shrink-0 text-sky-500" />
+                  <span className="truncate">{src.title || src.url}</span>
+                  <ExternalLinkIcon className="size-2.5 shrink-0 opacity-70" />
+                </a>
+              ))}
+            </div>
+          )}
           <div className="mt-2 space-y-3">
             {sections.map((section) => (
               <section key={section.label}>
@@ -225,6 +347,27 @@ function ToolActivityRow({
             {sections.length === 0 && <p className="text-[13px] text-[var(--color-text-muted)]">此工具调用没有提供可展示的参数或结果。</p>}
           </div>
         </details>
+        {/* 当详情未手动展开时，在下方直接展示醒目的来源引用胶囊，方便用户一键点击直达 */}
+        {!open && sources.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[11px] font-medium text-[var(--color-text-muted)]">来源引用：</span>
+            {sources.map((src, idx) => (
+              <a
+                key={`collapsed-${src.url}-${idx}`}
+                href={src.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-0.5 text-[11px] text-sky-600 dark:text-sky-400 transition-colors hover:border-sky-500/50 hover:bg-sky-500/20"
+                title={`${src.title}\n${src.url}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <GlobeIcon className="size-3 shrink-0 text-sky-500" />
+                <span className="truncate">{src.title || src.url}</span>
+                <ExternalLinkIcon className="size-2.5 shrink-0 opacity-70" />
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

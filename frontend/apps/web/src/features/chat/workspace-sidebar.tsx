@@ -297,10 +297,7 @@ export function WorkspaceSidebar({
               </button>
             </form>
           ) : (
-            <>
-              <span className="truncate text-[12.5px]">{session.title}</span>
-              {isSessionRunning && <span className="shrink-0 text-[10.5px] text-emerald-400/80">执行中</span>}
-            </>
+            <span className="truncate text-[12.5px]">{session.title}</span>
           )}
         </div>
 
