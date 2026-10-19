@@ -53,7 +53,73 @@ flowchart TD
 
 ---
 
-## 2. 后端全部内置能力与前端对接清单
+## 2. ✨ 核心功能与界面改动预览 (Visual Highlights)
+
+工作台支持现代化 AI 智能体交互设计，并深度适配 **浅色（Light）** 与 **深色（Dark）** 双色主题：
+
+### 2.1 输入框背面折叠排队卡片与流式引导（Queue & Steer）
+- **流式回复拦截操作**：当模型正在流式输出时，输入框内键入内容自动提供 **【排队】**（Enter）与 **【立即引导】**（Ctrl+Enter，打断并发送）双重决策。
+- **层叠折叠卡片**：排队任务呈现在输入框背面上方，杜绝角落灰色尖角与遮挡，支持**展开/折叠、撤回编辑、立即插队发送与删除**。
+
+| 深色模式（展开态） | 浅色模式（展开态） |
+| :---: | :---: |
+| ![排队卡片-深色模式](screenshots/stacked_queue_dark_expanded.png) | ![排队卡片-浅色模式](screenshots/stacked_queue_light_expanded.png) |
+
+> 流式生成过程中的【排队】与【立即引导】操作按钮：
+> 
+> ![流式回复操作按钮](screenshots/03-replying-with-queue-buttons.png)
+
+---
+
+### 2.2 Shimmer 柔和文字流动微光特效 (Shadcn Shimmer Color 规范)
+- 遵循 Shadcn 官方规范，采用柔和通透的 `shimmer-color-blue-500/60` 电光蓝微光特效。
+- 覆盖时间线总标题、深度推演思考区（`Thinking...`）、工具调用状态与子任务流式输出。
+- 深度适配黑白双色主题，有效解决 `-webkit-text-fill-color` 导致的文字变暗或隐形缺陷。
+
+| 深色模式（柔和电光蓝） | 浅色模式（宝石科技蓝） |
+| :---: | :---: |
+| ![微光特效-深色模式](screenshots/shimmer_color_dark_timeline.png) | ![微光特效-浅色模式](screenshots/shimmer_color_light_timeline.png) |
+
+---
+
+### 2.3 输入框工具栏与模型选择器（黑白双主题与防裁切修复）
+- 彻底解除容器对向上弹出菜单的 `overflow` 裁切限制，支持 13+ 预置模型自由切换。
+- 输入框四周统一直径优美圆角，模型选择器、思考等级、权限审批模式全状态适配深浅色背景。
+
+| 深色模式（模型下拉列表） | 浅色模式（模型下拉列表） |
+| :---: | :---: |
+| ![模型选择-深色模式](screenshots/model_selector_dark_fixed.png) | ![模型选择-浅色模式](screenshots/model_selector_light_fixed.png) |
+
+---
+
+### 2.4 原生 ContextMeter 环形占用率仪表与用量弹窗
+- 对齐官方紧凑环形仪表设计，默认显示占用率与当前状态，**点击后弹窗展示详细用量**。
+- 支持实时直观查看上下文占用占比、输入/输出 Token、缓存命中与总消耗明细。
+
+| 默认紧凑环形仪表圈 | 点击弹窗查看 Token 构成与占用进度条 |
+| :---: | :---: |
+| ![仪表圈默认态](screenshots/01-context-meter-restored.png) | ![用量详情弹窗](screenshots/02-context-meter-dialog-fixed.png) |
+
+---
+
+### 2.5 待办任务清单卡片 (TodoCard) 与双色主题
+- 支持自动将复杂长程目标分解为结构化任务清单，随模型自治循环实时打钩推进。
+- 平行于工作区选择器独立展开，支持一键折叠收缩。
+
+| 深色模式（任务清单展开） | 浅色模式（任务清单展开） |
+| :---: | :---: |
+| ![任务清单-深色模式](screenshots/theme_dark_todo_and_input.png) | ![任务清单-浅色模式](screenshots/theme_light_todo_expanded.png) |
+
+---
+
+### 2.6 代码审查 (Review) 边栏与 PowerShell 交互终端
+- 右侧可收缩边栏支持 Git 变更状态逐文件查看、行级红绿差异（Diff）高亮展示与交互式终端命令执行。
+
+![代码审查与终端](screenshots/08-review-git-diff-terminal.png)
+
+---
+
+## 3. 后端全部内置能力与前端对接清单
 
 | 功能模块 | MAF Harness 内置机制 | 前端 AG-UI 对接方式 | 实测状态 |
 | :--- | :--- | :--- | :---: |
@@ -77,7 +143,7 @@ flowchart TD
 
 ---
 
-## 3. 主面板建议提示词 (Prompt Starters)
+## 4. 主面板建议提示词 (Prompt Starters)
 
 在主面板中，预置了覆盖 MAF 全部内置能力的建议提示词卡片，一键点击即可体验：
 
@@ -92,7 +158,7 @@ flowchart TD
 
 ---
 
-## 4. 环境要求
+## 5. 环境要求
 
 - **.NET SDK 10.0+**（.NET 10.0.400+）
 - **Node.js 20+ / 24+**
@@ -101,9 +167,9 @@ flowchart TD
 
 ---
 
-## 5. 快速开始
+## 6. 快速开始
 
-### 5.1 一键启动（Windows）
+### 6.1 一键启动（Windows）
 
 双击根目录下的 `run.cmd` 或运行 `run.ps1`：
 - 自动检测环境并启动 .NET 10 WebAPI 后端服务（`http://127.0.0.1:8788`）；
@@ -114,7 +180,7 @@ flowchart TD
 run.cmd
 ```
 
-### 5.2 手动分步启动
+### 6.2 手动分步启动
 
 #### 终端 1：启动 .NET 10 WebAPI 后端
 
@@ -135,7 +201,7 @@ pnpm --filter @deepagent/web dev --host 127.0.0.1 --port 5175
 
 ---
 
-## 6. 服务端 API 接口清单
+## 7. 服务端 API 接口清单
 
 | 请求方式 | 路径 | 功能说明 |
 | :--- | :--- | :--- |
@@ -163,7 +229,7 @@ pnpm --filter @deepagent/web dev --host 127.0.0.1 --port 5175
 
 ---
 
-## 7. 全功能测试与验证截图清单
+## 8. 全功能测试与验证截图清单
 
 项目配备完整的端到端自动化测试脚本，全面覆盖主面板建议提示词、权限选择、人工审批（HITL）以及整个 Agent 内所有功能：
 
