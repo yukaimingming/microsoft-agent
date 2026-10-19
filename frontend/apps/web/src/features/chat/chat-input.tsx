@@ -720,15 +720,15 @@ function ChatInputContent({
             </PromptInputBody>
 
             {/* 底部工具条与提交按钮 */}
-            <PromptInputFooter className="flex items-center justify-between px-3 pb-2.5 pt-1.5 border-0 border-none gap-2 min-w-0">
-              <PromptInputTools className="flex items-center gap-1.5 text-[12px] flex-nowrap min-w-0 overflow-x-auto no-scrollbar shrink py-0.5">
+            <PromptInputFooter className="flex items-center justify-between px-3 pb-2.5 pt-1.5 border-0 border-none gap-2 min-w-0 overflow-visible">
+              <PromptInputTools className="flex items-center gap-1.5 text-[12px] flex-nowrap min-w-0 overflow-visible shrink py-0.5">
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="添加图片或文件"
                     title="添加图片或文件"
-                    className="chat-action-menu-btn size-8 rounded-lg text-zinc-300 hover:bg-zinc-800/70 border-0 border-none outline-none focus:outline-none focus-visible:ring-0 shadow-none transition-colors shrink-0"
+                    className="chat-action-menu-btn size-8 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800/70 dark:hover:text-white border-0 border-none outline-none focus:outline-none focus-visible:ring-0 shadow-none transition-colors shrink-0"
                   />
-                  <PromptInputActionMenuContent className="border-zinc-700 bg-zinc-900 text-zinc-100">
+                  <PromptInputActionMenuContent className="border-zinc-200 bg-white text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
                     <PromptInputActionAddAttachments label="添加图片或文件" />
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
@@ -748,22 +748,22 @@ function ChatInputContent({
                       "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0",
                       permissionMode === "full"
                         ? "text-red-500 hover:bg-red-500/10 hover:text-red-400 font-semibold"
-                        : "text-zinc-300 hover:bg-zinc-800/70 hover:text-white font-medium",
+                        : "text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:hover:text-white font-medium",
                     )}
                     title="选择本次及后续运行的工具审批方式"
                   >
                     {(() => {
                       const option = PERMISSION_OPTIONS.find((item) => item.mode === permissionMode) ?? PERMISSION_OPTIONS[0]!;
-                      return <option.Icon className={cn("size-3.5 shrink-0", permissionMode === "full" ? "text-red-500" : "text-zinc-400")} />;
+                      return <option.Icon className={cn("size-3.5 shrink-0", permissionMode === "full" ? "text-red-500" : "text-zinc-500 dark:text-zinc-400")} />;
                     })()}
                     <span className={cn("text-[11.5px]", permissionMode === "full" ? "text-red-500 font-semibold" : "font-medium")}>
                       {PERMISSION_OPTIONS.find((option) => option.mode === permissionMode)?.label ?? "请求批准"}
                     </span>
-                    <ChevronDownIcon className={cn("size-3 transition-transform", permissionMode === "full" ? "text-red-500/80" : "text-zinc-500", isPermissionDropdownOpen && "rotate-180")} />
+                    <ChevronDownIcon className={cn("size-3 transition-transform", permissionMode === "full" ? "text-red-500/80" : "text-zinc-400 dark:text-zinc-500", isPermissionDropdownOpen && "rotate-180")} />
                   </button>
 
                   {isPermissionDropdownOpen && (
-                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full left-0 z-50 mb-2 w-[min(21rem,calc(100vw-2rem))] rounded-xl border border-zinc-700/70 bg-[#242427] p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full left-0 z-50 mb-2 w-[min(21rem,calc(100vw-2rem))] rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-700/70 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
                       {PERMISSION_OPTIONS.map(({ mode, label, description, Icon }) => {
                         const isSelected = permissionMode === mode;
                         const isFull = mode === "full";
@@ -784,20 +784,20 @@ function ChatInputContent({
                                   ? "bg-red-500/15 border border-red-500/35 text-red-500 shadow-xs"
                                   : "text-red-500 hover:bg-red-500/10 border border-transparent"
                                 : isSelected
-                                  ? "bg-[#2f2f35] text-zinc-100 border border-transparent"
-                                  : "hover:bg-[#2f2f35] text-zinc-300 border border-transparent",
+                                  ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-zinc-100 border border-transparent font-medium"
+                                  : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100 border border-transparent",
                             )}
                           >
-                            <Icon className={cn("size-5 shrink-0", isFull ? "text-red-500" : "text-zinc-300")} />
+                            <Icon className={cn("size-5 shrink-0", isFull ? "text-red-500" : "text-zinc-500 dark:text-zinc-300")} />
                             <span className="min-w-0 flex-1">
                               <span className={cn("block text-[13px] font-medium", isFull ? "text-red-500 font-semibold" : "")}>
                                 {label}
                               </span>
-                              <span className={cn("block text-[11.5px] leading-snug", isFull ? "text-red-400" : "text-zinc-400")}>
+                              <span className={cn("block text-[11.5px] leading-snug", isFull ? "text-red-400" : "text-zinc-500 dark:text-zinc-400")}>
                                 {description}
                               </span>
                             </span>
-                            {isSelected && <CheckIcon className={cn("size-4 shrink-0", isFull ? "text-red-500" : "text-zinc-200")} />}
+                            {isSelected && <CheckIcon className={cn("size-4 shrink-0", isFull ? "text-red-500" : "text-zinc-900 dark:text-zinc-200")} />}
                           </button>
                         );
                       })}
@@ -814,19 +814,19 @@ function ChatInputContent({
                       setIsEffortDropdownOpen(false);
                       setIsPermissionDropdownOpen(false);
                     }}
-                    className="composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2.5 py-1 text-zinc-300 transition-colors hover:bg-zinc-800/70 hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0"
+                    className="composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2.5 py-1 text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 transition-colors dark:hover:bg-zinc-800/70 dark:hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0"
                     title="点击下拉切换当前模型"
                   >
                     <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
                     <span className="font-mono truncate max-w-[115px] sm:max-w-[160px] text-[11.5px]">
                       {currentModel || modelStatus}
                     </span>
-                    <ChevronDownIcon className={cn("size-3 text-zinc-500 shrink-0 ml-0.5 transition-transform", isModelDropdownOpen && "rotate-180")} />
+                    <ChevronDownIcon className={cn("size-3 text-zinc-400 dark:text-zinc-500 shrink-0 ml-0.5 transition-transform", isModelDropdownOpen && "rotate-180")} />
                   </button>
 
                   {/* 弹出式模型下拉列表 */}
                   {isModelDropdownOpen && (
-                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-64 rounded-xl border border-zinc-800 bg-[#242427] p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-64 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
                       <div className="px-2 py-1 text-[11px] font-medium text-zinc-500 uppercase tracking-wider flex items-center justify-between">
                         <span>选择模型</span>
                         {availableModels.length > 0 && <span>({availableModels.length})</span>}
@@ -850,12 +850,12 @@ function ChatInputContent({
                                 }}
                                 className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-mono text-left transition-colors ${
                                   isSelected
-                                    ? "bg-[#2f2f35] text-white font-medium"
-                                    : "text-zinc-400 hover:bg-[#2f2f35] hover:text-zinc-200"
+                                    ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                    : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
                                 }`}
                               >
                                 <span className="truncate">{m}</span>
-                                {isSelected && <CheckIcon className="size-3 text-emerald-400 shrink-0" />}
+                                {isSelected && <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0" />}
                               </button>
                             );
                           })
@@ -863,14 +863,14 @@ function ChatInputContent({
                       </div>
 
                       {onOpenSettings && (
-                        <div className="pt-1 border-t border-zinc-800/80">
+                        <div className="pt-1 border-t border-zinc-200 dark:border-zinc-800/80">
                           <button
                             type="button"
                             onClick={() => {
                               setIsModelDropdownOpen(false);
                               onOpenSettings();
                             }}
-                            className="flex w-full items-center gap-1.5 px-2 py-1 text-[11.5px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 rounded transition-colors"
+                            className="flex w-full items-center gap-1.5 px-2 py-1 text-[11.5px] text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-900 rounded transition-colors"
                           >
                             <SettingsIcon className="size-3 text-zinc-500" />
                             <span>管理模型与提供商...</span>
@@ -899,8 +899,8 @@ function ChatInputContent({
                       setIsPermissionDropdownOpen(false);
                     }}
                     className={cn(
-                      "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors hover:bg-zinc-800/70 border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0",
-                      reasoningUnsupported ? "opacity-40 cursor-not-allowed text-zinc-600" : "text-zinc-300 hover:text-white"
+                      "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800/70 dark:hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0",
+                      reasoningUnsupported ? "opacity-40 cursor-not-allowed text-zinc-400 dark:text-zinc-600" : "text-zinc-700 dark:text-zinc-300"
                     )}
                     title={
                       reasoningUnsupported
@@ -910,7 +910,7 @@ function ChatInputContent({
                           : "点击切换思考等级"
                     }
                   >
-                    <BrainIcon className="size-3 text-zinc-400 shrink-0" />
+                    <BrainIcon className="size-3 text-zinc-500 dark:text-zinc-400 shrink-0" />
                     <span className="text-[11.5px] font-medium">
                       思考: {reasoningUnsupported ? "无" : effortLabel}
                     </span>
@@ -920,18 +920,18 @@ function ChatInputContent({
                         aria-label="推理强度已降级"
                       />
                     )}
-                    <ChevronDownIcon className={cn("size-3 text-zinc-500 shrink-0 ml-0.5 transition-transform", isEffortDropdownOpen && "rotate-180")} />
+                    <ChevronDownIcon className={cn("size-3 text-zinc-400 dark:text-zinc-500 shrink-0 ml-0.5 transition-transform", isEffortDropdownOpen && "rotate-180")} />
                   </button>
 
                   {/* 弹出式思考等级下拉列表 */}
                   {isEffortDropdownOpen && (
-                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-44 rounded-xl border border-zinc-800 bg-[#242427] p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-44 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
                       <div className="px-2 py-1 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
                         思考等级 / 推理强度
                       </div>
 
                       {fallbackApplied && (
-                        <div className="mx-1 mb-1 rounded-md bg-amber-400/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-300/90">
+                        <div className="mx-1 mb-1 rounded-md bg-amber-400/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-600 dark:text-amber-300/90">
                           已自动降级：当前模型不支持
                           「{requestedEffort === "high" ? "高" : requestedEffort === "medium" ? "中" : "低"}」
                           档位，本次运行实际使用「{effortLabel}」。
@@ -949,11 +949,11 @@ function ChatInputContent({
                             return (
                               <div
                                 key={option}
-                                className="flex items-center justify-between px-2 py-1.5 rounded-md text-[11.5px] text-zinc-600 cursor-not-allowed select-none"
+                                className="flex items-center justify-between px-2 py-1.5 rounded-md text-[11.5px] text-zinc-400 dark:text-zinc-600 cursor-not-allowed select-none"
                                 title="当前模型不支持此档位（如 step-3.5-flash-2603 仅限低与高）"
                               >
                                 <span>{title}</span>
-                                <span className="text-[10px] text-zinc-600">不支持</span>
+                                <span className="text-[10px] text-zinc-400 dark:text-zinc-600">不支持</span>
                               </div>
                             );
                           }
@@ -968,15 +968,15 @@ function ChatInputContent({
                               }}
                               className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] text-left transition-colors ${
                                 isSelected
-                                  ? "bg-[#2f2f35] text-white font-medium"
-                                  : "text-zinc-400 hover:bg-[#2f2f35] hover:text-zinc-200"
+                                  ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                  : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
                               }`}
                             >
                               <div className="flex flex-col">
                                 <span>{title}</span>
                                 <span className="text-[10.5px] text-zinc-500 font-normal">{desc}</span>
                               </div>
-                              {isSelected && <CheckIcon className="size-3 text-emerald-400 shrink-0 ml-1" />}
+                              {isSelected && <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0 ml-1" />}
                             </button>
                           );
                         })}
