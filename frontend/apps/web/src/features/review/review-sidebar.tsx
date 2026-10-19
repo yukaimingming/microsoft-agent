@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ReviewPanel } from "./review-panel.js";
 import { EmptyTabView } from "./empty-tab-view.js";
 import { TerminalView } from "./terminal-view.js";
 import { FileViewer } from "./file-viewer.js";
+import { BrowserTabView } from "./browser-tab-view.js";
+import { OPEN_WEB_PREVIEW_EVENT, type OpenWebPreviewDetail } from "./web-preview-events.js";
 import {
   GitPullRequestIcon,
   PlusIcon,
@@ -13,13 +15,15 @@ import {
   TerminalIcon,
   FileCodeIcon,
   SearchIcon,
+  GlobeIcon,
 } from "lucide-react";
 
 interface TabItem {
   id: string;
   title: string;
-  type: "review" | "empty" | "terminal" | "file";
+  type: "review" | "empty" | "terminal" | "file" | "browser";
   filePath?: string;
+  url?: string;
 }
 
 interface ReviewSidebarProps {
@@ -145,6 +149,85 @@ export function ReviewSidebar({ isOpen, onToggle, workspaceRoot }: ReviewSidebar
     }
   };
 
+  /** 打开内置 Webview 浏览器功能 */
+  const handleOpenBrowser = (url = "https://www.bing.com") => {
+    let host = url;
+    try {
+      host = new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      // 忽略
+    }
+    const displayTitle = host || "Browser";
+
+    const curTab = tabs.find((t) => t.id === activeTabId);
+    if (curTab && curTab.type === "empty") {
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === activeTabId ? { ...t, title: displayTitle, type: "browser", url } : t
+        )
+      );
+    } else {
+      const newId = `browser-${Date.now()}`;
+      setTabs((prev) => [
+        ...prev,
+        { id: newId, title: displayTitle, type: "browser", url },
+      ]);
+      setActiveTabId(newId);
+    }
+  };
+
+  /** 监听全局打开 Webview 预览事件（如网络搜索来源引用点击） */
+  useEffect(() => {
+    const handleOpenPreview = (e: Event) => {
+      const customEvent = e as CustomEvent<OpenWebPreviewDetail>;
+      const { url, title } = customEvent.detail || {};
+      if (!url) return;
+
+      // 如果侧边栏当前处于收起状态，立即自动展开！
+      if (!isOpen) {
+        onToggle();
+      }
+
+      let host = url;
+      try {
+        host = new URL(url).hostname.replace(/^www\./, "");
+      } catch {
+        // 忽略
+      }
+      const displayTitle = title?.trim() || host;
+
+      setTabs((prev) => {
+        const existingBrowser = prev.find((t) => t.type === "browser");
+        if (existingBrowser) {
+          setActiveTabId(existingBrowser.id);
+          return prev.map((t) =>
+            t.id === existingBrowser.id ? { ...t, title: displayTitle, url } : t
+          );
+        }
+
+        const curTab = prev.find((t) => t.id === activeTabId);
+        if (curTab && curTab.type === "empty") {
+          setActiveTabId(curTab.id);
+          return prev.map((t) =>
+            t.id === curTab.id ? { ...t, title: displayTitle, type: "browser", url } : t
+          );
+        }
+
+        const newId = `browser-${Date.now()}`;
+        setActiveTabId(newId);
+        return [
+          ...prev,
+          { id: newId, title: displayTitle, type: "browser", url },
+        ];
+      });
+    };
+
+    window.addEventListener(OPEN_WEB_PREVIEW_EVENT, handleOpenPreview);
+    return () => {
+      window.removeEventListener(OPEN_WEB_PREVIEW_EVENT, handleOpenPreview);
+    };
+  }, [isOpen, onToggle, activeTabId]);
+
   if (!isOpen) {
     return null;
   }
@@ -153,6 +236,8 @@ export function ReviewSidebar({ isOpen, onToggle, workspaceRoot }: ReviewSidebar
 
   const getTabIcon = (type: TabItem["type"]) => {
     switch (type) {
+      case "browser":
+        return <GlobeIcon className="size-3.5 text-sky-400" />;
       case "review":
         return <GitPullRequestIcon className="size-3.5 text-zinc-400 group-hover:text-zinc-200" />;
       case "terminal":
@@ -259,6 +344,7 @@ export function ReviewSidebar({ isOpen, onToggle, workspaceRoot }: ReviewSidebar
             onOpenReview={handleOpenReview}
             onOpenFile={handleOpenFile}
             onOpenTerminal={handleOpenTerminal}
+            onOpenBrowser={handleOpenBrowser}
           />
         )}
         {activeTab?.type === "terminal" && (
@@ -266,6 +352,9 @@ export function ReviewSidebar({ isOpen, onToggle, workspaceRoot }: ReviewSidebar
         )}
         {activeTab?.type === "file" && (
           <FileViewer initialPath={activeTab.filePath} workspaceRoot={workspaceRoot} />
+        )}
+        {activeTab?.type === "browser" && (
+          <BrowserTabView initialUrl={activeTab.url} />
         )}
       </div>
     </aside>

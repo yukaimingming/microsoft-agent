@@ -11,9 +11,11 @@ import {
   PencilLineIcon,
   TerminalIcon,
   TriangleAlertIcon,
+  PanelRightOpenIcon,
 } from "lucide-react";
 import type { Activity } from "@deepagent/shared";
 import { Shimmer } from "../../components/ai-elements/shimmer.js";
+import { openInWebPreview } from "../review/web-preview-events.js";
 
 export type ProcessTimelineItem =
   | {
@@ -320,19 +322,21 @@ function ToolActivityRow({
             <div className="mt-2 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
               <span className="text-[11px] font-medium text-[var(--color-text-muted)]">来源引用：</span>
               {sources.map((src, idx) => (
-                <a
+                <button
+                  type="button"
                   key={`${src.url}-${idx}`}
-                  href={src.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-0.5 text-[11px] text-sky-600 dark:text-sky-400 transition-colors hover:border-sky-500/50 hover:bg-sky-500/20"
-                  title={`${src.title}\n${src.url}`}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openInWebPreview(src.url, src.title);
+                  }}
+                  className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-0.5 text-[11px] text-sky-600 dark:text-sky-400 transition-colors hover:border-sky-500/50 hover:bg-sky-500/20 cursor-pointer text-left"
+                  title={`在右侧Webview预览：\n${src.title}\n${src.url}`}
                 >
                   <GlobeIcon className="size-3 shrink-0 text-sky-500" />
                   <span className="truncate">{src.title || src.url}</span>
-                  <ExternalLinkIcon className="size-2.5 shrink-0 opacity-70" />
-                </a>
+                  <PanelRightOpenIcon className="size-2.5 shrink-0 opacity-70" />
+                </button>
               ))}
             </div>
           )}
@@ -347,24 +351,26 @@ function ToolActivityRow({
             {sections.length === 0 && <p className="text-[13px] text-[var(--color-text-muted)]">此工具调用没有提供可展示的参数或结果。</p>}
           </div>
         </details>
-        {/* 当详情未手动展开时，在下方直接展示醒目的来源引用胶囊，方便用户一键点击直达 */}
+        {/* 当详情未手动展开时，在下方直接展示醒目的来源引用胶囊，点击在右侧Webview中直接展开预览 */}
         {!open && sources.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
             <span className="text-[11px] font-medium text-[var(--color-text-muted)]">来源引用：</span>
             {sources.map((src, idx) => (
-              <a
+              <button
+                type="button"
                 key={`collapsed-${src.url}-${idx}`}
-                href={src.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-0.5 text-[11px] text-sky-600 dark:text-sky-400 transition-colors hover:border-sky-500/50 hover:bg-sky-500/20"
-                title={`${src.title}\n${src.url}`}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openInWebPreview(src.url, src.title);
+                }}
+                className="inline-flex max-w-[280px] items-center gap-1.5 truncate rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-0.5 text-[11px] text-sky-600 dark:text-sky-400 transition-colors hover:border-sky-500/50 hover:bg-sky-500/20 cursor-pointer text-left"
+                title={`在右侧Webview预览：\n${src.title}\n${src.url}`}
               >
                 <GlobeIcon className="size-3 shrink-0 text-sky-500" />
                 <span className="truncate">{src.title || src.url}</span>
-                <ExternalLinkIcon className="size-2.5 shrink-0 opacity-70" />
-              </a>
+                <PanelRightOpenIcon className="size-2.5 shrink-0 opacity-70" />
+              </button>
             ))}
           </div>
         )}

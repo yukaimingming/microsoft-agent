@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
-import { GitPullRequestIcon, FileCodeIcon, TerminalIcon, SearchIcon, ArrowRightIcon } from "lucide-react";
+import { GitPullRequestIcon, FileCodeIcon, TerminalIcon, SearchIcon, ArrowRightIcon, GlobeIcon } from "lucide-react";
 import type { GitFileItem } from "./review-types.js";
 
 interface EmptyTabViewProps {
   onOpenReview: () => void;
   onOpenFile: (path?: string) => void;
   onOpenTerminal: () => void;
+  onOpenBrowser?: (url?: string) => void;
   changedFiles?: GitFileItem[];
 }
 
@@ -16,11 +17,19 @@ export function EmptyTabView({
   onOpenReview,
   onOpenFile,
   onOpenTerminal,
+  onOpenBrowser,
   changedFiles = [],
 }: EmptyTabViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
   const actions = [
+    {
+      id: "browser",
+      icon: GlobeIcon,
+      label: "Browser",
+      desc: "打开内置 Webview 浏览器预览网页或搜索结果",
+      onClick: () => onOpenBrowser?.("https://www.bing.com"),
+    },
     {
       id: "review",
       icon: GitPullRequestIcon,

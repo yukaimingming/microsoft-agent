@@ -33,6 +33,7 @@ import { useSessions, normalizePath, type SessionSummary } from "./features/chat
 import { FolderPickerModal } from "./features/chat/folder-picker-modal.js";
 import { PanelLeftIcon, AlertCircleIcon, PanelRightIcon, SunIcon, MoonIcon, AlertTriangleIcon } from "lucide-react";
 import { ReviewSidebar } from "./features/review/review-sidebar.js";
+import { useGitReview } from "./features/review/use-git-review.js";
 
 /** AG-UI 服务端地址：走代理或直接连接。 */
 const AGENT_URL = "/agent";
@@ -94,28 +95,6 @@ export function App() {
     });
   };
 
-  // 右侧代码审查侧边栏折叠/展开（支持记忆状态）
-  const [isReviewOpen, setIsReviewOpen] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem("maf_review_open");
-      return saved !== null ? saved === "true" : true;
-    } catch {
-      return true;
-    }
-  });
-
-  const toggleReview = () => {
-    setIsReviewOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("maf_review_open", String(next));
-      } catch {
-        // 忽略
-      }
-      return next;
-    });
-  };
-
   /** 当前工作区目录。若为 null 则表示单纯不在工作区的直接聊天模式。 */
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(() => {
     try {
@@ -141,6 +120,75 @@ export function App() {
       // 忽略
     }
   }, [workspaceRoot]);
+
+  // 获取工作区变更状态以判断是否有修改内容
+  const { status: gitStatus } = useGitReview(workspaceRoot);
+  const totalGitChanges = (gitStatus?.changes?.length || 0) + (gitStatus?.staged?.length || 0);
+
+  // 判断当前会话是否有聊天内容或修改内容
+  const hasChatContent = state.messages.length > 0 || state.activities.length > 0;
+  const hasModifiedContent = totalGitChanges > 0;
+  const hasAnyContent = hasChatContent || hasModifiedContent;
+
+  // 右侧扩展收缩栏折叠/展开（新建对话且无内容时默认隐藏，有内容再显示）
+  const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
+
+  const toggleReview = () => {
+    userManuallyToggledRef.current = true;
+    setIsReviewOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("maf_review_open", String(next));
+      } catch {
+        // 忽略
+      }
+      return next;
+    });
+  };
+
+  // 严格响应需求：在工作区下或者聊天模式，如果是新建对话，没有修改内容或者没有聊天内容，就应该隐藏，有内容再显示出来
+  const prevThreadIdRef = useRef<string>(state.threadId);
+  const prevHasContentRef = useRef<boolean>(hasAnyContent);
+  const userManuallyToggledRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const isThreadSwitched = prevThreadIdRef.current !== state.threadId;
+    prevThreadIdRef.current = state.threadId;
+
+    if (isThreadSwitched) {
+      userManuallyToggledRef.current = false;
+      if (!hasAnyContent) {
+        // 切换到全新建会话，无任何内容，默认自动隐藏右侧栏
+        setIsReviewOpen(false);
+      } else {
+        // 切换到已有内容的会话，恢复显示
+        try {
+          const saved = localStorage.getItem("maf_review_open");
+          setIsReviewOpen(saved !== null ? saved === "true" : true);
+        } catch {
+          setIsReviewOpen(true);
+        }
+      }
+      prevHasContentRef.current = hasAnyContent;
+      return;
+    }
+
+    // 初始进入或会话未变：如果无内容，强制保持隐藏
+    if (!hasAnyContent) {
+      if (!userManuallyToggledRef.current) {
+        setIsReviewOpen(false);
+      }
+    } else if (!prevHasContentRef.current && hasAnyContent) {
+      // 从无内容变为有内容（如刚发送了第一条消息或模型生成了内容或修改了文件）：自动显示出来！
+      setIsReviewOpen(true);
+      try {
+        localStorage.setItem("maf_review_open", "true");
+      } catch {
+        // 忽略
+      }
+    }
+    prevHasContentRef.current = hasAnyContent;
+  }, [state.threadId, hasAnyContent]);
 
   // 会话管理器
   const sessionsManager = useSessions(state.threadId, workspaceRoot ?? "");
