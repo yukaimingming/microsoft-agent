@@ -119,6 +119,26 @@ flowchart TD
 
 ---
 
+### 2.7 未配置 API 厂商发送拦截警告模态框 (Missing Provider Guard)
+- 当用户尚未配置有效的大模型服务商或未填写 API Key 时，输入框无论是按回车、点击发送、点击排队/引导还是点击建议卡片均被智能拦截。
+- 弹出轻量、直观的警告提醒模态框，包含黄色警告标识、当前配置状态诊断分析、一键唤起设置的【前往配置提供商】主按钮，且深度自适应黑白主题。
+
+| 深色模式（拦截警告模态框） | 浅色模式（拦截警告模态框） |
+| :---: | :---: |
+| ![拦截警告-深色模式](screenshots/missing_provider_alert_dark.png) | ![拦截警告-浅色模式](screenshots/missing_provider_alert_light.png) |
+
+---
+
+### 2.8 左侧会话列表执行状态转圈 Spinner (对齐 LangChain 设计)
+- 参考 `langchain` 会话列表设计，当某个会话处于当前或后台运行中时，左侧会话图标平滑替换为正在旋转的翡翠绿动态 Spinner（`<Spinner className="size-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />`）。
+- 无论用户切到其它工作区还是留在当前对话，多会话后台执行状态一览无余，动画细腻通透。
+
+| 深色模式（侧边栏运行中转圈） | 浅色模式（侧边栏运行中转圈） |
+| :---: | :---: |
+| ![侧边栏转圈-深色模式](screenshots/sidebar_spinner_dark.png) | ![侧边栏转圈-浅色模式](screenshots/sidebar_spinner_light.png) |
+
+---
+
 ## 3. 后端全部内置能力与前端对接清单
 
 | 功能模块 | MAF Harness 内置机制 | 前端 AG-UI 对接方式 | 实测状态 |
