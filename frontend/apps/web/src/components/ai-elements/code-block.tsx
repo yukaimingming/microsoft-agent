@@ -141,26 +141,95 @@ const tokensCache = new Map<string, TokenizedCode>();
 // Subscribers for async token updates
 const subscribers = new Map<string, Set<(result: TokenizedCode) => void>>();
 
+const LANGUAGE_ALIASES: Record<string, BundledLanguage | "text"> = {
+  js: "javascript",
+  javascript: "javascript",
+  ts: "typescript",
+  typescript: "typescript",
+  jsx: "jsx",
+  tsx: "tsx",
+  py: "python",
+  python: "python",
+  sh: "bash",
+  bash: "bash",
+  shell: "bash",
+  zsh: "bash",
+  html: "html",
+  css: "css",
+  scss: "scss",
+  json: "json",
+  jsonc: "jsonc",
+  xml: "xml",
+  sql: "sql",
+  md: "markdown",
+  markdown: "markdown",
+  yaml: "yaml",
+  yml: "yaml",
+  rust: "rust",
+  rs: "rust",
+  go: "go",
+  golang: "go",
+  c: "c",
+  cpp: "cpp",
+  "c++": "cpp",
+  cs: "csharp",
+  csharp: "csharp",
+  "c#": "csharp",
+  java: "java",
+  php: "php",
+  ruby: "ruby",
+  rb: "ruby",
+  swift: "swift",
+  kotlin: "kotlin",
+  kt: "kotlin",
+  diff: "diff",
+  dockerfile: "dockerfile",
+  docker: "dockerfile",
+  powershell: "powershell",
+  ps1: "powershell",
+  wasm: "wasm",
+  toml: "toml",
+  graphql: "graphql",
+  text: "text",
+  txt: "text",
+  plaintext: "text",
+};
+
+export const normalizeLanguage = (rawLang?: string): BundledLanguage => {
+  if (!rawLang || typeof rawLang !== "string") return "text" as BundledLanguage;
+  const clean = rawLang.trim().toLowerCase();
+  return (LANGUAGE_ALIASES[clean] ?? "text") as BundledLanguage;
+};
+
 const getTokensCacheKey = (code: string, language: BundledLanguage) => {
+  const safeLang = normalizeLanguage(language);
   const start = code.slice(0, 100);
   const end = code.length > 100 ? code.slice(-100) : "";
-  return `${language}:${code.length}:${start}:${end}`;
+  return `${safeLang}:${code.length}:${start}:${end}`;
 };
 
 const getHighlighter = (
   language: BundledLanguage
 ): Promise<HighlighterGeneric<BundledLanguage, BundledTheme>> => {
-  const cached = highlighterCache.get(language);
+  const safeLang = normalizeLanguage(language);
+  const cached = highlighterCache.get(safeLang);
   if (cached) {
     return cached;
   }
 
+  const langsToLoad = safeLang === ("text" as BundledLanguage) ? [] : [safeLang];
+
   const highlighterPromise = createHighlighter({
-    langs: [language],
+    langs: langsToLoad,
     themes: ["github-light", "github-dark"],
+  }).catch(() => {
+    return createHighlighter({
+      langs: [],
+      themes: ["github-light", "github-dark"],
+    });
   });
 
-  highlighterCache.set(language, highlighterPromise);
+  highlighterCache.set(safeLang, highlighterPromise);
   return highlighterPromise;
 };
 
@@ -255,14 +324,6 @@ const CodeBlockBody = memo(
     showLineNumbers: boolean;
     className?: string;
   }) => {
-    const preStyle = useMemo(
-      () => ({
-        backgroundColor: tokenized.bg,
-        color: tokenized.fg,
-      }),
-      [tokenized.bg, tokenized.fg]
-    );
-
     const keyedLines = useMemo(
       () => addKeysToTokens(tokenized.tokens),
       [tokenized.tokens]
@@ -271,14 +332,13 @@ const CodeBlockBody = memo(
     return (
       <pre
         className={cn(
-          "dark:!bg-[var(--shiki-dark-bg)] dark:!text-[var(--shiki-dark)] m-0 p-4 text-sm",
+          "m-0 overflow-x-auto p-4 font-mono text-[13px] leading-relaxed bg-transparent text-zinc-800 dark:text-zinc-200",
           className
         )}
-        style={preStyle}
       >
         <code
           className={cn(
-            "font-mono text-sm",
+            "font-mono text-[13px]",
             showLineNumbers && "[counter-increment:line_0] [counter-reset:line]"
           )}
         >
@@ -309,7 +369,7 @@ export const CodeBlockContainer = ({
 }: HTMLAttributes<HTMLDivElement> & { language: string }) => (
   <div
     className={cn(
-      "group relative w-full overflow-hidden rounded-md border bg-background text-foreground",
+      "group relative w-full overflow-hidden rounded-xl border border-zinc-200 bg-white text-zinc-900 shadow-xs dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 transition-colors",
       className
     )}
     data-language={language}
@@ -329,7 +389,7 @@ export const CodeBlockHeader = ({
 }: HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex items-center justify-between border-b bg-muted/80 px-3 py-2 text-muted-foreground text-xs",
+      "flex items-center justify-between border-b border-zinc-200/80 bg-zinc-100/70 px-3.5 py-1.5 text-zinc-600 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:text-zinc-400 text-xs select-none",
       className
     )}
     {...props}
@@ -499,13 +559,21 @@ export const CodeBlockCopyButton = ({
 
   return (
     <Button
-      className={cn("shrink-0", className)}
+      className={cn(
+        "size-7 shrink-0 rounded-md text-zinc-500 hover:bg-zinc-200/80 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition-colors cursor-pointer",
+        className
+      )}
       onClick={copyToClipboard}
       size="icon"
       variant="ghost"
       {...props}
     >
-      {children ?? <Icon size={14} />}
+      {children ?? (
+        <Icon
+          size={14}
+          className={isCopied ? "text-emerald-600 dark:text-emerald-400" : ""}
+        />
+      )}
     </Button>
   );
 };

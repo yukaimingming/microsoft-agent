@@ -20,6 +20,7 @@ import {
   useState,
 } from "react";
 import { Streamdown } from "streamdown";
+import { MarkdownCodeBlock } from "./markdown-code-block.js";
 
 import { Shimmer } from "./shimmer";
 
@@ -257,7 +258,11 @@ export const ReasoningContent = memo(
         {...props}
       >
         <div className={cn(isStreaming ? "streaming-caret" : "")}>
-          {content ? <Streamdown>{content}</Streamdown> : null}
+          {content ? (
+            <Streamdown components={{ code: MarkdownCodeBlock }}>
+              {content}
+            </Streamdown>
+          ) : null}
         </div>
       </CollapsibleContent>
     );

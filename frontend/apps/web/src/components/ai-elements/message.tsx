@@ -26,6 +26,7 @@ import {
 } from "react";
 import { Streamdown } from "streamdown";
 import { MarkdownTable } from "./markdown-table.js";
+import { MarkdownCodeBlock } from "./markdown-code-block.js";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -328,6 +329,7 @@ export const MessageResponse = memo(
       )}
       components={{
         table: MarkdownTable,
+        code: MarkdownCodeBlock,
         ...components,
       }}
       {...props}
