@@ -149,12 +149,16 @@ function PromptInputAttachmentsDisplay({
   onPreview: (file: ChatAttachment) => void;
 }) {
   const attachments = usePromptInputAttachments();
+  if (attachments.files.length === 0) return null;
+
   return (
-    <ChatAttachmentGallery
-      files={attachments.files}
-      onPreview={onPreview}
-      onRemove={attachments.remove}
-    />
+    <PromptInputHeader className="px-3 pt-2.5 pb-1">
+      <ChatAttachmentGallery
+        files={attachments.files}
+        onPreview={onPreview}
+        onRemove={attachments.remove}
+      />
+    </PromptInputHeader>
   );
 }
 
@@ -727,9 +731,7 @@ function ChatInputContent({
             onError={handleAttachmentError}
             className="chat-prompt-input relative z-10 rounded-2xl border transition-colors overflow-visible outline-none shadow-xs bg-white border-zinc-200 focus-within:border-zinc-400 focus-within:ring-0 dark:border-zinc-800/80 dark:bg-zinc-950 dark:focus-within:border-zinc-600 dark:shadow-none"
           >
-            <PromptInputHeader className="px-3 pt-3">
-              <PromptInputAttachmentsDisplay onPreview={setPreviewAttachment} />
-            </PromptInputHeader>
+            <PromptInputAttachmentsDisplay onPreview={setPreviewAttachment} />
             <PromptInputBody>
               <PromptInputTextarea
                 value={text}
@@ -742,7 +744,7 @@ function ChatInputContent({
                       ? "输入提示词...（Enter 排队，Ctrl+Enter 立即引导）"
                       : "输入任务描述...（Enter 发送，Shift+Enter 换行）"
                 }
-                className="chat-prompt-textarea min-h-[50px] max-h-[220px] px-3.5 py-2.5 text-[13.5px] focus:outline-none border-0 shadow-none focus-visible:ring-0 bg-transparent text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+                className="chat-prompt-textarea min-h-[36px] max-h-[220px] px-3.5 pt-3 pb-1.5 text-[13.5px] leading-relaxed resize-none focus:outline-none border-0 shadow-none focus-visible:ring-0 bg-transparent text-zinc-900 placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600"
               />
             </PromptInputBody>
 
