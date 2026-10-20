@@ -188,6 +188,26 @@ export function buildTurnProcessTimeline(
       return true;
     });
 
+    // 提取本轮用户输入，用于精准识别用户要求调用工具的意图
+    const userPrompt = start > 0 ? messages[start - 1]?.content : "";
+
+    // 思考或用户意图里出现工具名/文件操作指令，说明接下来的文字是工具前说明，而不是普通问答。
+    const plansConcreteTool = (text: string | undefined): boolean =>
+      Boolean(
+        text &&
+          /file_access_[a-z0-9_]+|file_access|run_shell|todos_[a-z0-9_]+|mode_(get|set)|read_pdf|read_excel|web_search_exa|web_fetch_exa|web_search|background_agents_[a-z0-9_]+|创建.*文件|写入.*文件|修改.*文件|替换.*内容|diff\s*对比|行级\s*Diff|新建文件|编辑文件|查看文件/i.test(
+            text,
+          ),
+      );
+    const turnPlansToolUse =
+      turnActivities.length > 0 ||
+      plansConcreteTool(userPrompt) ||
+      turnMessages.some((item) => plansConcreteTool(item.reasoning) || plansConcreteTool(item.content));
+
+    // 过渡句开头。命中后整段流式期间都留在时间线里，不能等后半句关键词或字数阈值再改判定，否则会先画到正文再跳回。
+    const preambleLead =
+      /^(?:#{1,6}\s*)?(?:步骤\s*\d+|当前\s*(?:shell|工作区|终端|目录)|我来|我将|让我|正在|先|首先|接下来|准备|调用|使用|执行|通过|我用|我会|我看到|我先|现在我|为了|当前|好的|已创建|创建完成|已写入|写入完成|已生成|生成完成|已完成|现在|下面|继续)/;
+
     const isItemProcessMessage = (item: ChatMessage, msgIdx: number): boolean => {
       // 1. 绝对权威：已被标记为过程消息（后端 CUSTOM_PROCESS_MESSAGE / tool 伴随），100% 属于思维链/时间线过程
       if (item.isProcess === true) return true;
@@ -212,32 +232,35 @@ export function buildTurnProcessTimeline(
         return true;
       }
 
-      // 5. 【流式中间过程说明防御】：
-      // 当大模型在执行工具之前，流式输出前置操作意图、工作区说明或工具执行引导（如“当前 shell 工作区是...，我用文件工具写入...”），
-      // 必须直接留在思维链时间线内部流式展示，严禁先跳到外部正文区域闪现再缩回！
-      const trimmed = item.content.trim();
-      const isToolActionIntent =
-        trimmed.length < 260 &&
-        (/^(当前\s*(shell|工作区|终端|目录)|我来|我将|让我|正在|先|首先|接下来|准备|调用|使用|执行|通过|我用|我会)/.test(trimmed) &&
-         /(工具|写入|修改|读取|查看|创建|删除|查询|执行|运行|调用|替换|diff|终端|命令|shell|workspace|工作区)/i.test(trimmed));
+      // 5. 流式过程说明从第一个字就留在时间线内，禁止先跳到外部正文再缩回。
+      if (item.streaming && Boolean(item.content.trim()) && turnPlansToolUse) {
+        // 如果后面还有工具活动（典型如多工具链中间的过渡）：一律属于过程说明
+        const hasLaterTools = turnActivities.some((activity) => activity.startedAt >= contentStart);
+        if (hasLaterTools) return true;
 
-      if (
-        item.streaming &&
-        (Boolean(item.reasoning) || turnActivities.length > 0) &&
-        isToolActionIntent
-      ) {
-        return true;
+        const hasToolBeforeContent = turnActivities.some(
+          (activity) => activity.startedAt > 0 && activity.startedAt <= contentStart,
+        );
+        // 还没有任何工具落在这段正文之前：思考或提问已明确计划工具，整段都是工具前说明。
+        if (!hasToolBeforeContent) return true;
+        // 工具之间的过渡句：前缀一出现就收进时间线
+        if (preambleLead.test(item.content.trim())) return true;
+        // 如果本轮有工具正在执行中，说明任务仍在工具链中，流式内容保持在时间线内
+        if (turnActivities.some((a) => a.status === "running")) return true;
       }
 
       return false;
     };
 
     let finalMessage: ChatMessage | null = null;
-    for (let msgIdx = turnMessages.length - 1; msgIdx >= 0; msgIdx -= 1) {
-      const candidate = turnMessages[msgIdx]!;
-      if (candidate.content.trim() && !isItemProcessMessage(candidate, msgIdx)) {
-        finalMessage = candidate;
-        break;
+    const hasActiveTools = turnActivities.some((a) => a.status === "running");
+    if (!hasActiveTools) {
+      for (let msgIdx = turnMessages.length - 1; msgIdx >= 0; msgIdx -= 1) {
+        const candidate = turnMessages[msgIdx]!;
+        if (candidate.content.trim() && !isItemProcessMessage(candidate, msgIdx)) {
+          finalMessage = candidate;
+          break;
+        }
       }
     }
 
@@ -270,11 +293,11 @@ export function buildTurnProcessTimeline(
           streaming: item.reasoningStreaming,
           section: "reasoning",
         });
-        if (item.id !== finalMessage?.id && (!item.content.trim() || isProcess)) {
+        if (!item.content.trim() || isProcess || item.id !== finalMessage?.id) {
           ownedMessageIds.add(item.id);
         }
       }
-      if (isProcess && item.id !== finalMessage?.id && (item.content.trim() || (item.streaming && !item.reasoningStreaming))) {
+      if (isProcess && (item.content.trim() || (item.streaming && !item.reasoningStreaming))) {
         if (item.content.trim()) {
           items.push({
             id: `message:${item.id}`,
@@ -287,8 +310,8 @@ export function buildTurnProcessTimeline(
         }
         ownedMessageIds.add(item.id);
       }
-      // 防御锁：非最终答复且无实质正文的消息（如中间过程节点、空占位），一律由时间线接管，禁止外漏
-      if (item.id !== finalMessage?.id && !item.content.trim()) {
+      // 防御锁：非最终答复或无实质正文的消息（如中间过程节点、空占位），一律由时间线接管，禁止外漏
+      if (!item.content.trim() || isProcess || item.id !== finalMessage?.id) {
         ownedMessageIds.add(item.id);
       }
     }
@@ -696,10 +719,14 @@ export function ChatMessages({
               // 已被时间线收下的说明（含运行中、工具之后的中间返回）不在外面再画一份 Markdown。
               const isReasoningStreaming = message.reasoningStreaming === true;
               const hasSubstantialContent = Boolean(message.content && message.content.trim().length > 0);
+              // 外部正文展示防跳动规则：
+              // 1. 绝对不能在时间线内（非过程消息）
+              // 2. 思考不能正在流式输出
+              // 3. 必须已有实质内容，禁止在空内容或思考刚结束时抢跑弹出外漏
               const shouldShowMessageContent =
                 !messageIsInTimeline &&
                 !isReasoningStreaming &&
-                (hasSubstantialContent || (message.streaming && !message.reasoningStreaming));
+                hasSubstantialContent;
               const turnAnswer = answerByHost.get(message.id);
               const hostDurationMs = durationByHost.get(message.id) ?? message.runDurationMs;
 

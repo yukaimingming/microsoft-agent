@@ -133,6 +133,36 @@ describe("工具后的中间说明", () => {
     // 过程说明只出现在时间线内部一次，不会在外部 Markdown 回答区重复出现
     expect(html.split(processText).length - 1).toBe(1);
   });
+
+  it("工具名前的流式说明在关键词还没出现时也只留在时间线内", () => {
+    const partial = "我来完成这个任务。";
+    const html = renderToStaticMarkup(createElement(ChatMessages, {
+      messages: [
+        { id: "user", role: "user", content: "创建 demo-notes.txt 并做行级 Diff", streaming: false, createdAt: 100 },
+        {
+          id: "step-1",
+          role: "assistant",
+          content: partial,
+          reasoning: "先用 file_access_write 创建 demo-notes.txt，再用 file_access_replace 修改。",
+          streaming: true,
+          reasoningStreaming: false,
+          runId: "run-1",
+          createdAt: 200,
+          reasoningStartedAt: 150,
+          contentStartedAt: 220,
+        },
+      ],
+      activities: [],
+      error: null,
+      runSnapshot: runningSnapshot("running"),
+    }));
+
+    expect(html).toContain("正在分析");
+    expect(html).not.toContain("已完成分析");
+    expect(html.split(partial).length - 1).toBe(1);
+    const processGroup = html.slice(html.indexOf('class="process-group'), html.indexOf("正在整理过程") + 20);
+    expect(processGroup.length).toBeGreaterThan(20);
+  });
 });
 
 describe("findPromotedMessageId", () => {
@@ -309,6 +339,81 @@ describe("buildTurnProcessTimeline", () => {
       "tool-2",
     ]);
     expect(entries.some((item) => item.kind === "assistant" && item.content.includes("检查完成"))).toBe(false);
+  });
+
+  it("思考已点名 file_access 时，工具前的半句说明不会被当成最终正文", () => {
+    const partial = "我来完成这个任务。";
+    const timeline = buildTurnProcessTimeline(
+      [
+        { id: "user", role: "user", content: "创建文件", streaming: false, createdAt: 100 },
+        {
+          id: "step",
+          role: "assistant",
+          content: partial,
+          reasoning: "先用 file_access_write 创建 demo-notes.txt，再用 file_access_replace 修改。",
+          streaming: true,
+          reasoningStreaming: false,
+          runId: "run-1",
+          createdAt: 200,
+          contentStartedAt: 220,
+        },
+      ],
+      [],
+    );
+
+    expect(timeline.ownedMessageIds.has("step")).toBe(true);
+    expect(timeline.answerByHost.has("step")).toBe(false);
+    const entries = timeline.byFinalMessage.get("step") ?? [];
+    expect(entries.some((item) => item.kind === "assistant" && item.content === partial)).toBe(true);
+  });
+
+  it("工具之间的过渡句变长后仍留在时间线，不因超过字数阈值跳回正文", () => {
+    const partial = `我看到当前列出了系统根目录，这里不是理想的项目工作区。${"继续说明。".repeat(40)}`;
+    const timeline = buildTurnProcessTimeline(
+      [
+        { id: "user", role: "user", content: "创建文件", streaming: false, createdAt: 100 },
+        {
+          id: "step",
+          role: "assistant",
+          content: partial,
+          reasoning: "目录不对，换一个位置再创建。",
+          streaming: true,
+          reasoningStreaming: false,
+          runId: "run-1",
+          createdAt: 500,
+          contentStartedAt: 520,
+        },
+      ],
+      [
+        { id: "tool-1", kind: "tool", status: "completed", title: "file_access_ls", startedAt: 300, runId: "run-1" },
+      ],
+    );
+
+    expect(timeline.ownedMessageIds.has("step")).toBe(true);
+    expect(timeline.answerByHost.has("step")).toBe(false);
+  });
+
+  it("没有具体工具名的思考后，流式回答仍留在时间线外面", () => {
+    const timeline = buildTurnProcessTimeline(
+      [
+        { id: "user", role: "user", content: "你有什么能力", streaming: false, createdAt: 100 },
+        {
+          id: "answer",
+          role: "assistant",
+          content: "你好，我是文件助手。",
+          reasoning: "这是介绍性问题，直接回答即可，不需要创建待办或调用工具。",
+          streaming: true,
+          reasoningStreaming: false,
+          runId: "run-1",
+          createdAt: 200,
+          contentStartedAt: 220,
+        },
+      ],
+      [],
+    );
+
+    expect(timeline.ownedMessageIds.has("answer")).toBe(false);
+    expect(timeline.answerByHost.get("answer")).toEqual({ streaming: true, complete: false });
   });
 });
 
