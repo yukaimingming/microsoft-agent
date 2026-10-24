@@ -1,0 +1,12 @@
+# 排除与镜像构建无关的大目录和文件
+.git
+**/node_modules
+backend
+sessions
+screenshots
+workspace
+agent-file-memory
+scripts
+demo-notes.txt
+run.cmd
+run.ps1
