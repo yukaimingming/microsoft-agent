@@ -36,13 +36,14 @@ public static class FileAgentFactory
         AgentFileStore? fileMemoryStore = null,
         string? workspacePersona = null,
         ReflectionState? reflectionState = null,
-        string permissionMode = "ask")
+        string permissionMode = "ask",
+        string? workspaceRoot = null)
     {
         var isFullPermission = string.Equals(permissionMode, "full", StringComparison.OrdinalIgnoreCase);
         var isAutoPermission = string.Equals(permissionMode, "auto", StringComparison.OrdinalIgnoreCase);
 
-        var pdfTools = new PdfTools(fileAccessStore.DefaultDrive);
-        var excelTools = new ExcelTools(fileAccessStore.DefaultDrive);
+        var pdfTools = new PdfTools(fileAccessStore.DefaultDrive, workspaceRoot);
+        var excelTools = new ExcelTools(fileAccessStore.DefaultDrive, workspaceRoot);
 
         // Shell 工具（MAF 官方 Microsoft.Agents.AI.Tools.Shell）：
         // 若 permissionMode 为 "full"（完全访问权限），requireApproval 必须为 false 彻底免审放行；
@@ -55,18 +56,19 @@ public static class FileAgentFactory
         var shellAiFunction = shell.AsAIFunction(requireApproval: !isFullPermission);
 
         // provider 级指令：紧贴 file_access_* 工具注入，比全局提示词更管用。
-        // 核心就一条：路径里不能有冒号（provider 的 NormalizeRelativePath 只放行
-        // 无冒号相对路径，D/temp/x.txt 合法，D:/temp/x.txt 会被拒）。
-        var fileAccessInstructions = """
-                                     ## File Access
-                                     文件工具的路径规则（违反会被工具拒绝，务必遵守）：
-                                     - 路径必须是相对路径、用正斜杠，且绝对不能出现盘符冒号。
-                                       D:/temp/x.txt 和 D:\temp\x.txt 都是非法的，会被拒绝。
-                                     - 正确写法：D/temp/x.txt（第一段是盘符，后面跟盘内路径）。
-                                     - 不带盘符的路径（如 temp/x.txt）落在默认盘 D:。
-                                     - 用户给你绝对路径时，删掉冒号、反斜杠换成正斜杠再传：
-                                       D:\temp\x.txt → D/temp/x.txt；E:\仪器协议\x.pdf → E/仪器协议/x.pdf。
-                                     - 列目录用 file_access_ls，搜索内容用 file_access_grep。
+        // 核心规则：
+        // 1. 强绑定用户工作区：所有文件读取、写入、创建、列出、搜索等工具操作，严格只能绑定在当前用户工作区目录下！
+        // 2. 凡是用户提到创建、修改或查看项目文件（如 demo-notes.txt），使用普通相对路径（如 demo-notes.txt 或 workspace/xxx），直接精确落在当前工作区根目录下！
+        // 3. 列目录用 file_access_ls（留空或 "." 即列出当前工作区）。
+        // 4. 严禁访问工作区以外的路径或系统驱动器。
+        var wsDisplay = !string.IsNullOrWhiteSpace(workspaceRoot) ? workspaceRoot.Replace('\\', '/') : "当前工作区根目录";
+        var fileAccessInstructions = $"""
+                                     ## File Access 用户工作区强绑定规则
+                                     - 当前工作区根目录已严格绑定为：{wsDisplay}。
+                                     - 本会话所有文件操作严格限定在当前工作区目录内，禁止跨出工作区或访问系统全局盘符（如 C:\、D:\ 等）。
+                                     - 凡是用户要求创建、修改、读取项目或工作区文件（如 demo-notes.txt、demo-notes222.txt），直接使用普通相对路径（如 demo-notes.txt、src/index.ts）或 workspace/xxx 形式，它们均精准落在当前绑定的工作区根目录下，用户可以在工作区目录实时查看到！
+                                     - 路径必须使用正斜杠，不要在相对路径前加盘符冒号。
+                                     - 列出当前工作区目录用 file_access_ls（留空或传 "."），搜索内容用 file_access_grep。
                                      - 小编辑用 file_access_replace / file_access_replace_lines，不要整文件重写。
                                      """;
 
@@ -83,7 +85,7 @@ public static class FileAgentFactory
                 Tools = [.. pdfTools.AsAiTools(), .. excelTools.AsAiTools()],
                 Instructions = """
                     你是文档分析员，母 agent 会把文档分析任务委派给你。用 read_pdf / read_excel
-                    读取指定文档，输出结构化中文摘要：
+                    读取指定文档（若未指定具体文件名，直接读取工作区根目录下的 project-overview.xlsx），输出结构化中文摘要：
                     1. 文档主题与用途（一两句话）；
                     2. 关键数据/条款（分条列出，保留编号、名称、数值等硬信息）；
                     3. 值得注意的结论或风险。
@@ -111,11 +113,11 @@ public static class FileAgentFactory
             {
                 Instructions = """
                     你是文件整理员，母 agent 会把目录扫描和归类规划委派给你。
-                    根据给出的目录，用 file_access_ls 逐层扫描（内容模糊时用 file_access_grep），
-                    然后输出归类方案表：建议的目标文件夹名 → 应归入的文件清单（按类型/用途分组）。
+                    请不要进行冗长思考推演，直接调用一次 file_access_ls(".") 查看工作区顶层目录结构（严禁进入 sessions、agent-file-memory 等子目录逐层扫描，也不要调用 file_access_grep 或 file_access_read），
+                    然后立即输出精炼的 Markdown 归类方案表：建议的目标文件夹名 → 应归入的文件或目录清单（按类型/用途分组）。
                     你只读和规划，绝不执行任何移动/删除/写入——执行是母 agent 的事。
                     路径按 File Access 指令的规则（相对路径、无冒号）。
-                    方案末尾用一两句说明分组依据。
+                    方案末尾用一两句说明分组依据，总字数严格控制在 200 字以内。
                     """,
             },
         });
@@ -197,8 +199,10 @@ public static class FileAgentFactory
                                      拿目录，再按章节分段读（每次 maxPages 不超过 8），最后综合汇总。
                                   5. Excel（read_excel）：.xlsx 用它读，转 Markdown 表格；
                                      .xls 老格式不支持，要明说。
-                                  6. 任务清单（todos_*）：多步骤任务先建清单，逐步完成并更新状态；
-                                     单步能完成的小事不要建清单。
+                                  6. 任务清单（todos_*）：仅在用户明确要求使用 todos_add 规划待办清单时调用。
+                                     - 当用户要求用 todos_add 规划待办任务清单并汇报成果时：第一步立即调用 todos_add 建立 3 项简明待办任务；随后最多调用 1 次 file_access_ls(".") 查看顶层目录（严禁进入 sessions 等子目录，也不要实际编写/创建脚本文件），直接分步调用 todos_complete 将待办项逐一打勾完成，最后立即输出完整的成果汇报总结；
+                                     - 过程与总结严格分步：在任务推进过程中，只输出当前步骤的简短操作说明；只有在所有待办任务均已打勾完成之后，最后才输出完整的汇报总结；
+                                     - 常规文件读写修改任务（例如创建 demo-notes.txt 并用 file_access_replace 修改展示 Diff）不要调用 todos_add，直接用 file_access_write(overwrite=true) 写入后再用 file_access_replace 修改，两步直接完成。
                                   7. 模式（mode_get / mode_set）：内置 plan（规划）与
                                      execute（执行）两种，默认 plan。复杂任务留在 plan 模式
                                      规划（探查现状 + 建清单 + 给出方案），经用户确认后
@@ -210,12 +214,11 @@ public static class FileAgentFactory
                                      被问「之前说过什么」时，先查记忆（file_memory_read /
                                      file_memory_search）再回答，不要凭空说不知道。
                                   9. 子智能体（可委派的后台代理）：
-                                     - docAnalyst（文档分析员）：分析 PDF/Excel 内容的长任务派给它，
-                                       它返回结构化摘要——长文档的原文消化在它那边完成，
-                                       不会撑爆你的上下文。简单的一两页文档自己读即可。
+                                     - docAnalyst（文档分析员）：分析 PDF/Excel 内容派给它（工作区根目录默认有 project-overview.xlsx 可直接分析，先用 file_access_ls(".") 确认文件名即可，严禁全盘递归搜索文件），
+                                       它返回结构化摘要——长文档的原文消化在它那边完成，不会撑爆你的上下文。
                                      - fileOrganizer（文件整理员）：扫描目录、制定归类方案派给它
-                                       （只读规划，不执行）；拿到方案后，实际的移动/建目录
-                                       由你用 run_shell 执行，每条命令仍要用户审批。
+                                       （只读规划，不执行）；拿到方案后，向用户完整展示归类方案。
+                                     - 【重要】当你启动后台子智能体（docAnalyst 或 fileOrganizer）后，必须在同一轮对话内立即调用等待/获取输出工具（如 background_agents_wait / background_agents_output 等）拿到子智能体的完整返回结果，并直接整理呈现给用户！严禁只启动后台任务就停下来询问用户「是否等待任务完成」。
                                      不要动辄委派——一步就能完成的小事自己做。
 
                                   纪律：
@@ -224,6 +227,7 @@ public static class FileAgentFactory
                                   - 覆盖已有文件前先读一眼原有内容。
                                   - 每次操作后用一两句中文说明结果；被用户拒绝时明确告知未执行，
                                     不要换个方式偷偷重试。
+                                  - 当回答纯算法对比或技术原理分析问题（无需调用工具）时，思考过程保持精炼聚焦，正文采用结构化 Markdown 对比表格加核心要点总结，篇幅控制在 500-700 字以内。
                                   - 不使用表情符号；回答控制在必要长度。
                                   """
                                   .Replace("{{SEARCH_LINE}}", searchToolLine)

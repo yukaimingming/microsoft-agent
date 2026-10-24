@@ -9,6 +9,9 @@ import {
   formatElapsedDuration,
   hasActiveProcess,
   getToolActionLabel,
+  plainProcessText,
+  formatReasoningPreview,
+  ReasoningPreview,
   ProcessActivityGroup,
 } from "../src/features/chat/process-activity-group.js";
 
@@ -88,7 +91,7 @@ describe("ProcessActivityGroup 状态展示", () => {
     }));
 
     expect(html).toContain("正在分析，用时 0分0秒");
-    expect(html).toContain("bg-clip-text");
+    expect(html).toContain("shimmer");
     expect(html).toContain(">思考<");
     expect(html).not.toContain("正在思考");
     expect(html).toContain('aria-expanded="true"');
@@ -150,9 +153,54 @@ describe("ProcessActivityGroup 状态展示", () => {
     expect(html).toContain("README.md");
     expect(html).toContain("正在分析文件");
     expect(html).toContain(">思考<");
-    expect(html).toContain("bg-clip-text");
+    expect(html).toContain("shimmer");
     expect(html).toContain("输入参数");
     expect(html).not.toContain('open=""');
+  });
+
+  it("闪光效果仅在正在执行的思考或工具项上显示，已完成的内容不再显示闪光", () => {
+    const html = renderToStaticMarkup(createElement(ProcessActivityGroup, {
+      items: [
+        { ...reasoningItem, id: "reasoning:done", streaming: false, content: "已完成的第一段思考" },
+        {
+          id: "tool:done",
+          kind: "activity" as const,
+          activity: {
+            id: "tool:done",
+            kind: "tool" as const,
+            status: "completed" as const,
+            title: "file_access_write",
+            startedAt: Date.now() - 2000,
+            detail: { toolName: "file_access_write", input: { fileName: "old.txt" } },
+          },
+        },
+        {
+          id: "tool:running",
+          kind: "activity" as const,
+          activity: {
+            id: "tool:running",
+            kind: "tool" as const,
+            status: "running" as const,
+            title: "file_access_replace",
+            startedAt: Date.now(),
+            detail: { toolName: "file_access_replace", input: { fileName: "demo-notes.txt" } },
+          },
+        },
+      ],
+      isActive: true,
+      runCompleted: false,
+      finalAnswerStreaming: false,
+      finalAnswerComplete: false,
+    }));
+
+    // 已完成的工具（写入了文件 old.txt）和已完成的思考不带 shimmer
+    expect(html).toContain("<span>写入了文件</span>");
+    expect(html).not.toMatch(/class="[^"]*shimmer[^"]*"[^>]*>写入了文件</);
+    expect(html).not.toMatch(/class="[^"]*shimmer[^"]*"[^>]*>old\.txt</);
+    expect(html).not.toMatch(/class="[^"]*shimmer[^"]*"[^>]*>已完成的第一段思考</);
+
+    // 正在执行的工具动作文案与参数合并为同一整行微光闪烁
+    expect(html).toMatch(/class="[^"]*shimmer[^"]*"[^>]*>正在编辑文件 demo-notes\.txt</);
   });
 
   it("只有过程说明时保持分析总线展开，工具详情仍然默认折叠", () => {
@@ -199,5 +247,50 @@ describe("ProcessActivityGroup 状态展示", () => {
     expect(host.textContent).toContain("第一段推理，第二段也到了");
     act(() => root.unmount());
     host.remove();
+  });
+
+  it("思考内容多行拼接解析完整保留所有思考阶段", () => {
+    const multilineContent = `
+# 正在规划步骤
+- 检索工作区文件结构
+- 分析并定位关键渲染逻辑
+正在修改对应代码...
+`;
+    const preview = formatReasoningPreview(multilineContent);
+    expect(preview).toBe("正在规划步骤 · 检索工作区文件结构 · 分析并定位关键渲染逻辑 · 正在修改对应代码...");
+  });
+
+  it("思考流式进行中与输出结束时的预览渲染模式切换", () => {
+    const multilineContent = "正在分析需求\n检索相关代码\n执行验证";
+
+    // 流式中：具有 overflow-hidden 跑马灯滚动容器
+    const streamingHtml = renderToStaticMarkup(createElement(ReasoningPreview, {
+      content: multilineContent,
+      streaming: true,
+    }));
+    expect(streamingHtml).toContain("overflow-hidden");
+    expect(streamingHtml).toContain("正在分析需求 · 检索相关代码 · 执行验证");
+
+    // 输出结束（非流式）：立即结束滚动，恢复为平静的 truncate 文本
+    const completedHtml = renderToStaticMarkup(createElement(ReasoningPreview, {
+      content: multilineContent,
+      streaming: false,
+    }));
+    expect(completedHtml).toContain("truncate");
+    expect(completedHtml).not.toContain("overflow-hidden");
+    expect(completedHtml).toContain("正在分析需求 · 检索相关代码 · 执行验证");
+  });
+
+  it("过程说明 Markdown 转普通文本（去除 ## 标题、代码围栏、加粗与行内代码）", () => {
+    const rawMarkdown = "### 当前文件内容如下：\n\n```\n版本 1.0.3\n```\n\n### 现在修改文件（修改其中两行内容）：\n**注意**：只改 `demo-notes.txt`。";
+    const text = plainProcessText(rawMarkdown);
+    expect(text).not.toContain("###");
+    expect(text).not.toContain("```");
+    expect(text).not.toContain("**");
+    expect(text).not.toContain("`");
+    expect(text).toContain("当前文件内容如下：");
+    expect(text).toContain("现在修改文件（修改其中两行内容）：");
+    expect(text).toContain("版本 1.0.3");
+    expect(text).toContain("注意：只改 demo-notes.txt。");
   });
 });

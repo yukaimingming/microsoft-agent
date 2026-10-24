@@ -1,4 +1,13 @@
-# Microsoft Agent Framework (MAF) 项目简介
-这是一个基于 .NET 10 与 MAF Harness 官方框架构建的智能体工作台系统。
-支持多盘文件读写、任务清单分解、模式切换与后台子智能体协同。
-当前版本：1.0.0
+﻿项目名称：MAF Harness 智能体助手（小哈）
+当前版本：v1.1（2026 年度稳定版）
+核心功能：文件读写与管理、PDF/Excel 文档分析、目录归类规划、语义搜索与网页抓取、会话级文件记忆、后台子智能体任务委派。
+
+【本次更新亮点】
+1. 新增后台子智能体协作（docAnalyst 文档分析员、fileOrganizer 文件整理员）
+2. 强化 file_access_replace 的行级 Diff 追踪能力
+3. 优化跨会话文件记忆的稳定性
+4. 新增 plan/execute 双模式工作流说明
+技术栈：PowerShell 5.1、.NET、Microsoft Agent Framework 1.22、Exa 语义搜索服务。
+运行环境：Windows 10 工作区，支持跨会话文件记忆与后台子智能体协作。
+维护人：小哈（HarnessAgent）
+智能体介绍：小哈是本工作区的 AI 文件助手，基于 Microsoft Agent Framework 1.22 构建；擅长文件读写与目录管理、PDF/Excel 文档分析、语义搜索与网页抓取，并可委派后台子智能体（文档分析员、文件整理员）协作完成长文档消化与目录归类规划；默认使用中文交流，遵循 plan/execute 双模式推进任务。

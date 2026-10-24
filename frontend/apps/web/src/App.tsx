@@ -31,9 +31,11 @@ import { useProviderSettings } from "./features/settings/use-provider-settings.j
 import { useTheme } from "./features/settings/use-theme.js";
 import { useSessions, normalizePath, type SessionSummary } from "./features/chat/use-sessions.js";
 import { FolderPickerModal } from "./features/chat/folder-picker-modal.js";
-import { PanelLeftIcon, AlertCircleIcon, PanelRightIcon, SunIcon, MoonIcon, AlertTriangleIcon } from "lucide-react";
+import { PanelLeftIcon, AlertCircleIcon, PanelRightIcon, SunIcon, MoonIcon, AlertTriangleIcon, SmartphoneIcon } from "lucide-react";
 import { ReviewSidebar } from "./features/review/review-sidebar.js";
 import { useGitReview } from "./features/review/use-git-review.js";
+import { useWeChatClawbot } from "./features/wechat/use-wechat-clawbot.js";
+import { WeChatClawbotModal } from "./features/wechat/wechat-clawbot-modal.js";
 
 /** AG-UI 服务端地址：走代理或直接连接。 */
 const AGENT_URL = "/agent";
@@ -70,6 +72,9 @@ export function App() {
   }, [state.activities]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 个人微信 ClawBot 扫码连接弹窗状态
+  const [wechatModalOpen, setWechatModalOpen] = useState(false);
+  const wechat = useWeChatClawbot(wechatModalOpen);
   // 未配置API提供商拦截警告弹窗
   const [isMissingProviderAlertOpen, setIsMissingProviderAlertOpen] = useState(false);
 
@@ -121,16 +126,13 @@ export function App() {
     }
   }, [workspaceRoot]);
 
-  // 获取工作区变更状态以判断是否有修改内容
-  const { status: gitStatus } = useGitReview(workspaceRoot);
-  const totalGitChanges = (gitStatus?.changes?.length || 0) + (gitStatus?.staged?.length || 0);
+  // 获取工作区变更状态
+  useGitReview(workspaceRoot);
 
-  // 判断当前会话是否有聊天内容或修改内容
+  // 判断当前会话是否有聊天内容
   const hasChatContent = state.messages.length > 0 || state.activities.length > 0;
-  const hasModifiedContent = totalGitChanges > 0;
-  const hasAnyContent = hasChatContent || hasModifiedContent;
 
-  // 右侧扩展收缩栏折叠/展开（新建对话且无内容时默认隐藏，有内容再显示）
+  // 右侧扩展收缩栏折叠/展开（新对话默认收缩隐藏，仅在用户手动点击展开或切换到此前手动开启过的会话时展开）
   const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
 
   const toggleReview = () => {
@@ -146,9 +148,8 @@ export function App() {
     });
   };
 
-  // 严格响应需求：在工作区下或者聊天模式，如果是新建对话，没有修改内容或者没有聊天内容，就应该隐藏，有内容再显示出来
+  // 严格响应需求：新对话右侧边栏默认收缩（false），绝不因为工作区有历史 Git 变更而在新对话时自动弹出
   const prevThreadIdRef = useRef<string>(state.threadId);
-  const prevHasContentRef = useRef<boolean>(hasAnyContent);
   const userManuallyToggledRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -157,38 +158,18 @@ export function App() {
 
     if (isThreadSwitched) {
       userManuallyToggledRef.current = false;
-      if (!hasAnyContent) {
-        // 切换到全新建会话，无任何内容，默认自动隐藏右侧栏
+      // 切换到新对话或其它会话时，如果当前是空对话则强制默认收缩；已有对话也默认保持收缩，除非用户主动点开
+      if (!hasChatContent) {
         setIsReviewOpen(false);
-      } else {
-        // 切换到已有内容的会话，恢复显示
-        try {
-          const saved = localStorage.getItem("maf_review_open");
-          setIsReviewOpen(saved !== null ? saved === "true" : true);
-        } catch {
-          setIsReviewOpen(true);
-        }
       }
-      prevHasContentRef.current = hasAnyContent;
       return;
     }
 
-    // 初始进入或会话未变：如果无内容，强制保持隐藏
-    if (!hasAnyContent) {
-      if (!userManuallyToggledRef.current) {
-        setIsReviewOpen(false);
-      }
-    } else if (!prevHasContentRef.current && hasAnyContent) {
-      // 从无内容变为有内容（如刚发送了第一条消息或模型生成了内容或修改了文件）：自动显示出来！
-      setIsReviewOpen(true);
-      try {
-        localStorage.setItem("maf_review_open", "true");
-      } catch {
-        // 忽略
-      }
+    // 当前为新对话（无聊天内容）且用户未手动点击展开时，始终保持右侧边栏收缩
+    if (!hasChatContent && !userManuallyToggledRef.current) {
+      setIsReviewOpen(false);
     }
-    prevHasContentRef.current = hasAnyContent;
-  }, [state.threadId, hasAnyContent]);
+  }, [state.threadId, hasChatContent]);
 
   // 会话管理器
   const sessionsManager = useSessions(state.threadId, workspaceRoot ?? "");
@@ -484,6 +465,10 @@ export function App() {
         if (response.ok) {
           saved = ((await response.json()) as { state?: ClientState }).state ?? null;
           if (saved) cacheRemoteSessionState(id, saved);
+        } else if (response.status === 404) {
+          // 该会话在后端已被删除或不存在，从列表中清理，绝不打开空会话
+          sessionsManager.removeSession(id);
+          return;
         }
       } catch {
         // 继续按空会话打开；已存在的本地会话不受影响。
@@ -491,10 +476,11 @@ export function App() {
     }
     if (saved) {
       loadState(saved);
+      sessionsManager.setActiveSessionId(id);
     } else {
-      setActiveThread(id);
+      // 找不到历史状态，清理该幽灵项
+      sessionsManager.removeSession(id);
     }
-    sessionsManager.setActiveSessionId(id);
   };
 
   // 人工审批操作
@@ -604,6 +590,9 @@ export function App() {
         onOpenFolderPicker={() => setIsFolderPickerOpen(true)}
         theme={theme}
         onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+        onOpenWeChatModal={() => setWechatModalOpen(true)}
+        wechatConnected={wechat.connection.connected}
+        wechatStatus={wechat.scanStatus}
       />
 
       {/* 右侧主聊天区 */}
@@ -640,6 +629,39 @@ export function App() {
                 </span>
               </div>
             )}
+
+            {/* 顶部状态栏同步展示个人助手 ClawBot 连接状态（点击亦可直接打开二维码弹窗） */}
+            <button
+              type="button"
+              data-testid="header-wechat-clawbot-btn"
+              onClick={() => setWechatModalOpen(true)}
+              title={
+                wechat.connection.connected
+                  ? "个人助手 ClawBot 已连接 (iLink 协议在线)"
+                  : "点击扫码连接个人微信 ClawBot"
+              }
+              className={`flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-colors border mr-1 ${
+                wechat.connection.connected
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                  : wechat.scanStatus === "scaned"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                    : "border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              }`}
+            >
+              <span
+                className={`size-1.5 shrink-0 rounded-full ${
+                  wechat.connection.connected
+                    ? "bg-emerald-400 animate-pulse"
+                    : wechat.scanStatus === "scaned"
+                      ? "bg-amber-400 animate-ping"
+                      : "bg-zinc-500"
+                }`}
+              />
+              <SmartphoneIcon className="size-3.5 shrink-0" />
+              <span>
+                个人助手 ClawBot：{wechat.connection.connected ? "已连接" : wechat.scanStatus === "scaned" ? "待确认" : "未连接"}
+              </span>
+            </button>
 
             {/* 一键切换黑白主题按钮（☀️ 浅色 / 🌙 深色） */}
             <button
@@ -758,6 +780,9 @@ export function App() {
             availableModels={allAvailableModels}
             currentModel={currentModelId}
             onSelectModel={(model: string) => settings.setActiveModelId(model)}
+            providers={settings.providers}
+            activeProviderId={settings.activeProviderId}
+            onSelectProviderModel={settings.selectProviderModel}
             permissionMode={permissionMode}
             onPermissionModeChange={setPermissionMode}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -808,6 +833,19 @@ export function App() {
         onSelectProvider={settings.setActiveProviderId}
         theme={theme}
         onThemeChange={setTheme}
+      />
+
+      {/* 个人微信 ClawBot 扫码绑定弹窗 (iLink 协议) */}
+      <WeChatClawbotModal
+        open={wechatModalOpen}
+        onClose={() => setWechatModalOpen(false)}
+        connection={wechat.connection}
+        qrData={wechat.qrData}
+        scanStatus={wechat.scanStatus}
+        errorMessage={wechat.errorMessage}
+        resetting={wechat.resetting}
+        onFetchQrCode={wechat.fetchQrCode}
+        onResetChannel={wechat.resetChannel}
       />
 
       {/* 未配置API厂商拦截警告弹窗（黑白双主题深度自适应） */}

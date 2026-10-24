@@ -861,60 +861,94 @@ html.dark .queued-behind-card span {
   color: #e4e4e7 !important;
 }
 
-/* ================= shadcn/ui Shimmer (带 color) 官方规范特效 ================= */
-@keyframes tw-shimmer-sweep {
-  0% {
+/* ================= shadcn/ui 官方 Shimmer 文字微光动效 ================= */
+/* 参考规范：https://ui.shadcn.com/docs/utils/shimmer */
+@property --shimmer-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 20deg;
+}
+
+@property --shimmer-image {
+  syntax: "*";
+  inherits: false;
+}
+
+@property --shimmer-text-fill {
+  syntax: "*";
+  inherits: false;
+}
+
+@keyframes tw-shimmer {
+  from {
     background-position: 100% 0;
   }
-  100% {
-    background-position: -100% 0;
+  to {
+    background-position: 0 0;
   }
 }
 
-.shimmer {
-  --shimmer-duration: 2.2s;
-  --shimmer-base: #94a3b8;
-  --shimmer-color: rgba(59, 130, 246, 0.6);
-  display: inline-block;
+@utility shimmer {
+  --_spread: var(--shimmer-spread, calc(3ch + 40px));
+  --_base: currentColor;
+  --_highlight: var(--shimmer-color, color-mix(in srgb, currentColor 25%, transparent));
+  background-image: var(
+    --shimmer-image,
+    linear-gradient(
+      calc(90deg + var(--shimmer-angle, 20deg)),
+      var(--_base) calc(50% - var(--_spread)),
+      color-mix(in srgb, var(--_highlight), var(--_base) 50%) calc(50% - var(--_spread) * 0.5),
+      var(--_highlight) 50%,
+      color-mix(in srgb, var(--_highlight), var(--_base) 50%) calc(50% + var(--_spread) * 0.5),
+      var(--_base) calc(50% + var(--_spread))
+    )
+  );
+  background-repeat: no-repeat;
+  background-size: calc(200% + var(--_spread) * 2) 100%;
+  background-position: 0 0;
   background-clip: text;
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-size: 250% 100%;
-  animation: tw-shimmer-sweep var(--shimmer-duration, 2.2s) linear infinite;
-  background-image: linear-gradient(
-    90deg,
-    var(--shimmer-base) 0%,
-    var(--shimmer-base) 35%,
-    var(--shimmer-color) 50%,
-    var(--shimmer-base) 65%,
-    var(--shimmer-base) 100%
+  -webkit-text-fill-color: var(--shimmer-text-fill, transparent);
+  animation: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
+}
+
+@utility shimmer-color-* {
+  --shimmer-color: --value(--color-*);
+}
+
+/* 兼容标准类选择器与各种浏览器内核渲染 */
+.shimmer {
+  --_spread: var(--shimmer-spread, calc(3ch + 40px));
+  --_base: currentColor;
+  --_highlight: var(--shimmer-color, color-mix(in srgb, currentColor 25%, transparent));
+  background-image: var(
+    --shimmer-image,
+    linear-gradient(
+      calc(90deg + var(--shimmer-angle, 20deg)),
+      var(--_base) calc(50% - var(--_spread)),
+      color-mix(in srgb, var(--_highlight), var(--_base) 50%) calc(50% - var(--_spread) * 0.5),
+      var(--_highlight) 50%,
+      color-mix(in srgb, var(--_highlight), var(--_base) 50%) calc(50% + var(--_spread) * 0.5),
+      var(--_base) calc(50% + var(--_spread))
+    )
   );
+  background-repeat: no-repeat;
+  background-size: calc(200% + var(--_spread) * 2) 100%;
+  background-position: 0 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: var(--shimmer-text-fill, transparent);
+  animation: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
 }
 
-/* 浅色主题下的带 color 高光微调：柔和晶莹的 blue-500/60 科技蓝 */
-html.light .shimmer {
-  --shimmer-base: #64748b;
-  --shimmer-color: rgba(37, 99, 235, 0.6);
-}
-
-/* 深色主题下的带 color 高光微调：灵动柔美的 blue-500/60 电光蓝 */
-html.dark .shimmer {
-  --shimmer-base: #94a3b8;
-  --shimmer-color: rgba(96, 165, 250, 0.65);
-}
-
-/* 支持通过类名定制特定色彩：优先支持用户指定的 blue-500/60 */
 .shimmer-color-blue-500\/60,
-.shimmer-color-blue-500 {
-  --shimmer-color: rgba(59, 130, 246, 0.6) !important;
+[class*="shimmer-color-blue-500/60"] {
+  --shimmer-color: rgba(59, 130, 246, 0.95);
 }
 
-html.dark .shimmer-color-blue-500\/60 {
-  --shimmer-color: rgba(96, 165, 250, 0.65) !important;
-}
-
-html.light .shimmer-color-blue-500\/60 {
-  --shimmer-color: rgba(37, 99, 235, 0.6) !important;
+html.light .shimmer-color-blue-500\/60,
+html.light [class*="shimmer-color-blue-500/60"] {
+  --shimmer-color: rgba(37, 99, 235, 0.95);
 }
 
 .shimmer-color-\[\#378ADD\],
@@ -928,3 +962,30 @@ html.light .shimmer-color-blue-500\/60 {
 
 
 
+
+/* ================= 微信 ClawBot 扫码连接弹窗浅色主题适配 ================= */
+html.light [data-testid="wechat-clawbot-modal"] .bg-zinc-900\/40,
+html.light [data-testid="wechat-clawbot-modal"] .bg-zinc-900\/70 {
+  background-color: #f8fafc !important;
+}
+html.light [data-testid="wechat-clawbot-status-banner"].border-emerald-500\/30 {
+  background-color: #ecfdf5 !important;
+  border-color: #6ee7b7 !important;
+  color: #065f46 !important;
+}
+html.light [data-testid="wechat-clawbot-status-banner"].border-emerald-500\/30 span {
+  color: #065f46 !important;
+}
+html.light [data-testid="sidebar-clawbot-status-dot"] {
+  --tw-ring-color: #ffffff !important;
+}
+html.light [data-testid="wechat-refresh-qrcode-btn"],
+html.light [data-testid="wechat-show-qrcode-btn"] {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+html.light [data-testid="wechat-refresh-qrcode-btn"]:hover,
+html.light [data-testid="wechat-show-qrcode-btn"]:hover {
+  background-color: #e2e8f0 !important;
+}

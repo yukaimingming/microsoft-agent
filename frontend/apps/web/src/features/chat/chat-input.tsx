@@ -48,11 +48,12 @@ import {
   REASONING_EFFORTS,
   type Activity,
   type PermissionMode,
+  type PublicProvider,
   type ReasoningEffort,
   type RunTokenUsage,
 } from "@deepagent/shared";
 import type { ChatMessage } from "./client-reducer.js";
-import { StatsLine, ContextMeter } from "./session-stats.js";
+import { StatsLine } from "./session-stats.js";
 import { cn } from "../../lib/utils.js";
 import { extractFolderName } from "./use-sessions.js";
 import { ChatAttachmentGallery, ImagePreviewDialog, type ChatAttachment } from "./chat-attachments.js";
@@ -88,6 +89,12 @@ interface ChatInputProps {
   currentModel?: string | null;
   /** 切换模型回调 */
   onSelectModel?: (model: string) => void;
+  /** 所有已配置的模型厂商列表（用于按厂商分组选择模型） */
+  providers?: PublicProvider[];
+  /** 当前选中的厂商 ID */
+  activeProviderId?: string | null;
+  /** 按厂商与模型一键切换回调 */
+  onSelectProviderModel?: (providerId: string, modelId: string) => void;
   /** 打开模型设置模态框 */
   onOpenSettings?: () => void;
   /** 当前工作区根目录（若为空或 null 则为直接聊天模式） */
@@ -250,6 +257,9 @@ function ChatInputContent({
   availableModels = [],
   currentModel,
   onSelectModel,
+  providers = [],
+  activeProviderId,
+  onSelectProviderModel,
   onOpenSettings,
   workspaceRoot,
   customWorkspaces = [],
@@ -517,112 +527,126 @@ function ChatInputContent({
   return (
     <div className="shrink-0 bg-white dark:bg-black px-4 py-4 transition-colors">
       <div className="mx-auto w-full max-w-3xl">
-        <div className="mb-2 flex min-w-0 items-center gap-2">
-          {/* 工作区选择器保持在左侧 */}
-          <div className="relative flex w-fit shrink-0 items-center" ref={workspaceDropdownRef}>
-            <button
-              type="button"
-              data-testid="workspace-mode-selector"
-              onClick={() => {
-                setIsWorkspaceDropdownOpen((v) => !v);
-                setIsTodoExpanded(false);
-                setIsModelDropdownOpen(false);
-                setIsEffortDropdownOpen(false);
-              }}
-              className="group inline-flex items-center gap-1.5 rounded-xl bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/80 px-2.5 py-1 text-[13px] font-medium text-zinc-800 dark:text-zinc-100 transition-colors select-none max-w-[280px] border-0 outline-none"
-              title={isDirectChat ? "当前为直接聊天模式（无工作区）" : `当前工作区：${currentWorkspacePath}`}
-            >
-              {isDirectChat ? (
-                <MessageSquareIcon className="size-4 text-zinc-600 dark:text-zinc-300 shrink-0" />
-              ) : (
-                <FolderIcon className="size-4 text-zinc-600 dark:text-zinc-300 shrink-0" />
-              )}
-              <span className="truncate">
-                {isDirectChat ? "直接聊天" : currentWorkspaceName}
-              </span>
-              <ChevronDownIcon
-                className={cn(
-                  "size-3.5 text-zinc-400 shrink-0 transition-transform duration-200 ml-0.5",
-                  isWorkspaceDropdownOpen && "rotate-180 text-zinc-600 dark:text-zinc-200",
+        {/* 输入框顶部附加栏：工作区选择器与待办任务列表独立分开展示 */}
+        <div className="flex w-full items-center justify-between gap-2 px-1 mb-2">
+          {/* 左侧：工作区选择器保持在左侧 */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex w-fit shrink-0 items-center" ref={workspaceDropdownRef}>
+              <button
+                type="button"
+                data-testid="workspace-mode-selector"
+                onClick={() => {
+                  setIsWorkspaceDropdownOpen((v) => !v);
+                  setIsTodoExpanded(false);
+                  setIsModelDropdownOpen(false);
+                  setIsEffortDropdownOpen(false);
+                }}
+                className="group inline-flex items-center gap-1.5 rounded-xl bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/80 px-2.5 py-1 text-[13px] font-medium text-zinc-800 dark:text-zinc-100 transition-colors select-none max-w-[280px] border-0 outline-none"
+                title={isDirectChat ? "当前为直接聊天模式（无工作区）" : `当前工作区：${currentWorkspacePath}`}
+              >
+                {isDirectChat ? (
+                  <MessageSquareIcon className="size-4 text-zinc-600 dark:text-zinc-300 shrink-0" />
+                ) : (
+                  <FolderIcon className="size-4 text-zinc-600 dark:text-zinc-300 shrink-0" />
                 )}
-              />
-            </button>
-
-            {/* 下拉菜单面板（适配深浅双色：浅色白底微边框、深色暗黑深邃底） */}
-            {isWorkspaceDropdownOpen && (
-              <div className="workspace-dropdown-panel absolute left-0 bottom-full mb-2 z-50 w-64 rounded-2xl bg-white border border-zinc-200 text-zinc-800 shadow-xl dark:bg-[#242427] dark:border-0 dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
-                {/* 选项 1：直接聊天模式 */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectWorkspace?.(null);
-                    setIsWorkspaceDropdownOpen(false);
-                  }}
+                <span className="truncate">
+                  {isDirectChat ? "直接聊天" : currentWorkspaceName}
+                </span>
+                <ChevronDownIcon
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
-                    isDirectChat
-                      ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
-                      : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white",
+                    "size-3.5 text-zinc-400 shrink-0 transition-transform duration-200 ml-0.5",
+                    isWorkspaceDropdownOpen && "rotate-180 text-zinc-600 dark:text-zinc-200",
                   )}
-                >
-                  <MessageSquareIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
-                  <span className="truncate">直接聊天</span>
-                  {isDirectChat && <CheckIcon className="size-4 text-zinc-900 dark:text-white shrink-0 ml-auto" />}
-                </button>
+                />
+              </button>
 
-                {/* 选项 2..N：工作区列表（无多余分割线，干净紧凑排列） */}
-                <div className="max-h-[220px] overflow-y-auto space-y-0.5 my-0.5 scrollbar-thin scrollbar-thumb-zinc-700">
-                  {customWorkspaces && customWorkspaces.length > 0
-                    ? customWorkspaces.map((wsPath) => {
-                        const isSelected =
-                          !isDirectChat &&
-                          (currentWorkspacePath === wsPath ||
-                            currentWorkspacePath.toLowerCase() === wsPath.toLowerCase());
-                        const name = extractFolderName(wsPath);
-                        return (
-                          <button
-                            key={wsPath}
-                            type="button"
-                            onClick={() => {
-                              onSelectWorkspace?.(wsPath);
-                              setIsWorkspaceDropdownOpen(false);
-                            }}
-                            className={cn(
-                              "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
-                              isSelected
-                                ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
-                                : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white",
-                            )}
-                          >
-                            <FolderIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
-                            <span className="truncate">{name}</span>
-                            {isSelected && <CheckIcon className="size-4 text-zinc-900 dark:text-white shrink-0 ml-auto" />}
-                          </button>
-                        );
-                      })
-                    : null}
+              {/* 下拉菜单面板（适配深浅双色：浅色白底微边框、深色暗黑深邃底） */}
+              {isWorkspaceDropdownOpen && (
+                <div className="workspace-dropdown-panel absolute left-0 bottom-full mb-2 z-50 w-64 rounded-2xl bg-white border border-zinc-200 text-zinc-800 shadow-xl dark:bg-[#242427] dark:border-0 dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
+                  {/* 选项 1：直接聊天模式 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectWorkspace?.(null);
+                      setIsWorkspaceDropdownOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
+                      isDirectChat
+                        ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                        : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white",
+                    )}
+                  >
+                    <MessageSquareIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
+                    <span className="truncate">直接聊天</span>
+                    {isDirectChat && <CheckIcon className="size-4 text-zinc-900 dark:text-white shrink-0 ml-auto" />}
+                  </button>
+
+                  {/* 选项 2..N：工作区列表（无多余分割线，干净紧凑排列） */}
+                  <div className="max-h-[220px] overflow-y-auto space-y-0.5 my-0.5 scrollbar-thin scrollbar-thumb-zinc-700">
+                    {customWorkspaces && customWorkspaces.length > 0
+                      ? customWorkspaces.map((wsPath) => {
+                          const isSelected =
+                            !isDirectChat &&
+                            (currentWorkspacePath === wsPath ||
+                              currentWorkspacePath.toLowerCase() === wsPath.toLowerCase());
+                          const name = extractFolderName(wsPath);
+                          return (
+                            <button
+                              key={wsPath}
+                              type="button"
+                              onClick={() => {
+                                onSelectWorkspace?.(wsPath);
+                                setIsWorkspaceDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors select-none",
+                                isSelected
+                                  ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                  : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white",
+                              )}
+                            >
+                              <FolderIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
+                              <span className="truncate">{name}</span>
+                              {isSelected && <CheckIcon className="size-4 text-zinc-900 dark:text-white shrink-0 ml-auto" />}
+                            </button>
+                          );
+                        })
+                      : null}
+                  </div>
+
+                  {/* 选项：添加工作区...（使用加号图标，无额外分割线） */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWorkspaceDropdownOpen(false);
+                      onOpenFolderPicker?.();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white transition-colors select-none"
+                  >
+                    <PlusIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
+                    <span className="truncate">添加工作区...</span>
+                  </button>
                 </div>
-
-                {/* 选项：添加工作区...（使用加号图标，无额外分割线） */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsWorkspaceDropdownOpen(false);
-                    onOpenFolderPicker?.();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-[#2f2f35] dark:hover:text-white transition-colors select-none"
-                >
-                  <PlusIcon className="size-4 text-zinc-500 dark:text-zinc-300 shrink-0" />
-                  <span className="truncate">添加工作区...</span>
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* 任务 Todo 列表平行在工作区选择器右侧独立展示 */}
+          {/* 右侧：任务 Todo 列表平行在右侧独立展示（展开详情为绝对定位浮层，互不影响） */}
           {todoActivity ? (
             <div ref={todoCardRef} className="relative flex w-fit shrink-0 items-center">
-              <TodoCard activity={todoActivity} />
+              <TodoCard
+                activity={todoActivity}
+                isOpen={isTodoExpanded}
+                onToggleOpen={() => {
+                  setIsTodoExpanded((v) => !v);
+                  setIsWorkspaceDropdownOpen(false);
+                  setIsModelDropdownOpen(false);
+                  setIsEffortDropdownOpen(false);
+                  setIsPermissionDropdownOpen(false);
+                }}
+                onClose={() => setIsTodoExpanded(false)}
+              />
             </div>
           ) : null}
         </div>
@@ -834,62 +858,155 @@ function ChatInputContent({
                   )}
                 </div>
 
-                {/* 1. 模型选择下拉菜单 */}
+                {/* 1. 模型选择下拉菜单（支持按厂商分组选择切换） */}
                 <div className="relative shrink-0" ref={modelDropdownRef}>
                   <button
                     type="button"
+                    data-testid="model-selector-trigger"
                     onClick={() => {
                       setIsModelDropdownOpen((v) => !v);
                       setIsEffortDropdownOpen(false);
                       setIsPermissionDropdownOpen(false);
                     }}
                     className="composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2.5 py-1 text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 transition-colors dark:hover:bg-zinc-800/70 dark:hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0"
-                    title="点击下拉切换当前模型"
+                    title="点击按厂商分组切换模型"
                   >
                     <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
-                    <span className="font-mono truncate max-w-[115px] sm:max-w-[160px] text-[11.5px]">
-                      {currentModel || modelStatus}
-                    </span>
+                    {(() => {
+                      const activeProv = providers.find((p) => p.id === activeProviderId);
+                      return (
+                        <span className="font-mono truncate max-w-[140px] sm:max-w-[210px] text-[11.5px] flex items-center gap-1">
+                          {activeProv ? (
+                            <>
+                              <span className="font-sans text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0">
+                                {activeProv.label}
+                              </span>
+                              <span className="text-zinc-400 dark:text-zinc-600 shrink-0">/</span>
+                            </>
+                          ) : null}
+                          <span className="truncate">{currentModel || modelStatus}</span>
+                        </span>
+                      );
+                    })()}
                     <ChevronDownIcon className={cn("size-3 text-zinc-400 dark:text-zinc-500 shrink-0 ml-0.5 transition-transform", isModelDropdownOpen && "rotate-180")} />
                   </button>
 
-                  {/* 弹出式模型下拉列表 */}
+                  {/* 弹出式模型下拉列表（按厂商分组展示） */}
                   {isModelDropdownOpen && (
-                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-64 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
-                      <div className="px-2 py-1 text-[11px] font-medium text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                        <span>选择模型</span>
-                        {availableModels.length > 0 && <span>({availableModels.length})</span>}
-                      </div>
+                    <div
+                      data-testid="model-selector-dropdown"
+                      className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-72 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100"
+                    >
+                      {(() => {
+                        const groupedProviders = providers.filter(
+                          (p) => p.enabled && p.models && p.models.length > 0,
+                        );
+                        const totalGroupedModels = groupedProviders.reduce(
+                          (acc, p) => acc + p.models.length,
+                          0,
+                        );
 
-                      <div className="max-h-48 overflow-y-auto space-y-0.5 my-1">
-                        {availableModels.length === 0 ? (
-                          <div className="px-2 py-2 text-[11.5px] text-zinc-500 text-center">
-                            暂无可用模型，请在设置中配置
-                          </div>
-                        ) : (
-                          availableModels.map((m) => {
-                            const isSelected = currentModel === m;
-                            return (
-                              <button
-                                key={m}
-                                type="button"
-                                onClick={() => {
-                                  onSelectModel?.(m);
-                                  setIsModelDropdownOpen(false);
-                                }}
-                                className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-mono text-left transition-colors ${
-                                  isSelected
-                                    ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
-                                    : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
-                                }`}
-                              >
-                                <span className="truncate">{m}</span>
-                                {isSelected && <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0" />}
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
+                        return (
+                          <>
+                            <div className="px-2 py-1 text-[11px] font-medium text-zinc-500 uppercase tracking-wider flex items-center justify-between">
+                              <span>按厂商选择模型</span>
+                              {(totalGroupedModels > 0 || availableModels.length > 0) && (
+                                <span>
+                                  ({groupedProviders.length > 0 ? `${groupedProviders.length} 厂商 · ${totalGroupedModels}` : availableModels.length})
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="max-h-72 overflow-y-auto space-y-2 my-1 pr-0.5 scrollbar-thin">
+                              {groupedProviders.length > 0 ? (
+                                groupedProviders.map((prov) => {
+                                  const isCurrentProvider = prov.id === activeProviderId;
+                                  return (
+                                    <div
+                                      key={prov.id}
+                                      data-testid={`provider-group-${prov.id}`}
+                                      className="space-y-0.5"
+                                    >
+                                      <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50/80 dark:bg-zinc-900/50 rounded-md">
+                                        <span className="truncate">{prov.label}</span>
+                                        <span
+                                          className={cn(
+                                            "text-[10px] px-1.5 py-0.2 rounded font-normal shrink-0",
+                                            isCurrentProvider
+                                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                              : prov.hasApiKey
+                                                ? "bg-zinc-200/70 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                                                : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                                          )}
+                                        >
+                                          {isCurrentProvider ? "当前厂商" : prov.hasApiKey ? "已就绪" : "未填 Key"}
+                                        </span>
+                                      </div>
+
+                                      <div className="space-y-0.5 pl-1">
+                                        {prov.models.map((m) => {
+                                          const isSelected = isCurrentProvider && currentModel === m;
+                                          return (
+                                            <button
+                                              key={`${prov.id}:${m}`}
+                                              type="button"
+                                              data-testid={`model-option-${prov.id}-${m}`}
+                                              onClick={() => {
+                                                if (onSelectProviderModel) {
+                                                  onSelectProviderModel(prov.id, m);
+                                                } else {
+                                                  onSelectModel?.(m);
+                                                }
+                                                setIsModelDropdownOpen(false);
+                                              }}
+                                              className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-mono text-left transition-colors ${
+                                                isSelected
+                                                  ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                                  : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
+                                              }`}
+                                            >
+                                              <span className="truncate">{m}</span>
+                                              {isSelected && (
+                                                <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0 ml-1" />
+                                              )}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : availableModels.length === 0 ? (
+                                <div className="px-2 py-2 text-[11.5px] text-zinc-500 text-center">
+                                  暂无可用模型，请在设置中配置
+                                </div>
+                              ) : (
+                                availableModels.map((m) => {
+                                  const isSelected = currentModel === m;
+                                  return (
+                                    <button
+                                      key={m}
+                                      type="button"
+                                      onClick={() => {
+                                        onSelectModel?.(m);
+                                        setIsModelDropdownOpen(false);
+                                      }}
+                                      className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-mono text-left transition-colors ${
+                                        isSelected
+                                          ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                          : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
+                                      }`}
+                                    >
+                                      <span className="truncate">{m}</span>
+                                      {isSelected && <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0" />}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
 
                       {onOpenSettings && (
                         <div className="pt-1 border-t border-zinc-200 dark:border-zinc-800/80">
@@ -910,12 +1027,6 @@ function ChatInputContent({
                   )}
                 </div>
 
-                {/* 1.5 DeepSeek Harness 原生 ContextMeter：环形占用率仪表圈与上下文构成/用量面板，点击才显示 */}
-                <ContextMeter
-                  messages={messages}
-                  activities={activities}
-                  providedUsage={usage}
-                />
 
                 {/* 2. 思考等级下拉选择样式 */}
                 <div className="relative shrink-0" ref={effortDropdownRef}>

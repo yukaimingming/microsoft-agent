@@ -19,9 +19,14 @@ public sealed class ExcelTools
     /// <summary>单次提取的字符上限，防止大表读爆上下文。</summary>
     private const int MaxChars = 32 * 1024;
 
-    private readonly string _defaultDrive;
+    private readonly string? _defaultDrive;
+    private readonly string? _workspaceRoot;
 
-    public ExcelTools(string defaultDrive = "D") => _defaultDrive = defaultDrive;
+    public ExcelTools(string? defaultDrive = null, string? workspaceRoot = null)
+    {
+        _defaultDrive = defaultDrive;
+        _workspaceRoot = workspaceRoot;
+    }
 
     [Description("读取 Excel (.xlsx) 文件的工作表内容，转成 Markdown 表格。"
                + "用于分析通道号表、报表、清单等表格数据。.xls 老格式不支持。")]
@@ -36,7 +41,7 @@ public sealed class ExcelTools
         string systemPath;
         try
         {
-            systemPath = FilePathNormalizer.ToSystemPath(path, _defaultDrive);
+            systemPath = FilePathNormalizer.ToSystemPath(path, _defaultDrive, _workspaceRoot);
         }
         catch (ArgumentException ex)
         {

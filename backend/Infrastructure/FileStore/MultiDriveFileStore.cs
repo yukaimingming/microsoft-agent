@@ -1,152 +1,166 @@
+using MafHarness.Web.Services;
 using Microsoft.Agents.AI;
 
 namespace MafHarnessDemo.App.Infrastructure.FileStore;
 
 /// <summary>
-/// 任意盘符路由的文件 store——不预配置白名单，来哪个盘就动态建哪个盘的 store。
-///
-/// 背景：FileSystemAgentFileStore 是单根的（一个目录），FileAccessProvider 又在调 store
-/// 之前用 NormalizeRelativePath 拒绝一切带盘符的路径（"E:/x" 直接被拒，
-/// 报 "Paths must be relative and must not start with ... a drive root"）。
-/// 本类接管路由，路径形态约定：
-///
-///   E:/仪器协议文档/x.pdf   带冒号（模型按习惯写的）→ E 盘
-///   E/仪器协议文档/x.pdf    无冒号、首段单字母（提示词引导的形态）→ E 盘
-///   temp/notes.txt          普通相对路径 → 默认盘
-///
-/// 每个盘各持有一个 FileSystemAgentFileStore（动态创建并缓存），由它负责自己的安全闸门
-/// （规范化、拒绝 .. 段、拒绝符号链接）——本类只做路由，不放松任何盘内检查。
-///
-/// 注意：这是**完全放开**模式，任何盘符、任何路径都可读写。
-/// 风险自负——任何能影响模型输入的内容（粘贴的文档、网页、文件内容）里的
-/// 「请写入某路径」指令都可能被执行。本地自用 demo 可以，别接不可信输入。
+/// 用户工作区强绑定文件存储（Workspace-Scoped File Store）。
+/// 
+/// 遵循原则：
+/// 1. 严格只能绑定在用户工作区目录下，所有文件读写、创建、列出、搜索等操作必须在该工作区内完成。
+/// 2. 严禁越界跨盘或逃逸到系统根盘（如 C:\、D:\ 等）。
+/// 3. 自动抵御路径穿越（Directory Traversal），确保工作区沙箱安全。
 /// </summary>
 public sealed class MultiDriveFileStore : AgentFileStore
 {
-    private readonly Dictionary<string, FileSystemAgentFileStore> _stores = new(StringComparer.OrdinalIgnoreCase);
-    private readonly string _defaultDrive;
+    private readonly string _workspaceRoot;
+    private readonly FileSystemAgentFileStore _workspaceStore;
 
-    /// <param name="defaultDrive">无盘符相对路径的默认落点盘符，如 "C" 或 "D"。</param>
-    public MultiDriveFileStore(string defaultDrive = "C")
+    /// <param name="defaultDrive">已废弃，保留做兼容入参。</param>
+    /// <param name="workspaceRoot">用户当前绑定的工作区根目录绝对路径（若为空则自动解析默认工作区）。</param>
+    public MultiDriveFileStore(string? defaultDrive = null, string? workspaceRoot = null)
     {
-        if (!TryNormalizeDrive(defaultDrive, out var normalized))
-            throw new ArgumentException($"默认盘无效：{defaultDrive}", nameof(defaultDrive));
+        var resolvedRoot = !string.IsNullOrWhiteSpace(workspaceRoot)
+            ? workspaceRoot
+            : WorkspaceService.ResolveWorkspaceRoot(null);
 
-        _defaultDrive = normalized;
+        var full = Path.GetFullPath(resolvedRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        Directory.CreateDirectory(full);
+        _workspaceRoot = full.Replace('\\', '/');
+        _workspaceStore = new FileSystemAgentFileStore(full + Path.DirectorySeparatorChar);
     }
 
-    /// <summary>无盘符相对路径的默认落点盘符。</summary>
-    public string DefaultDrive => _defaultDrive;
+    /// <summary>工作区所在驱动器盘符。</summary>
+    public string DefaultDrive => _workspaceRoot.Length >= 2 && _workspaceRoot[1] == ':'
+        ? _workspaceRoot[..1].ToUpperInvariant()
+        : "D";
 
-    /// <summary>文件成功修改后的通知；供控制台展示实际写入前后的差异。</summary>
+    /// <summary>当前绑定的用户工作区根目录绝对路径。</summary>
+    public string WorkspaceRoot => _workspaceRoot;
+
+    /// <summary>文件成功修改后的通知；供前端展示实际写入前后的差异。</summary>
     public event Action<FileChange>? FileChanged;
 
     public override async Task WriteAsync(string path, string content, CancellationToken cancellationToken = default)
     {
-        var (store, relative) = Route(path);
-        var before = await store.FileExistsAsync(relative, cancellationToken)
-            ? await store.ReadAsync(relative, cancellationToken)
+        var relative = Route(path);
+        var before = await _workspaceStore.FileExistsAsync(relative, cancellationToken)
+            ? await _workspaceStore.ReadAsync(relative, cancellationToken)
             : null;
-        await store.WriteAsync(relative, content, cancellationToken);
+        await _workspaceStore.WriteAsync(relative, content, cancellationToken);
         if (before != content)
             FileChanged?.Invoke(new FileChange(path, before, content));
     }
 
     public override Task<string?> ReadAsync(string path, CancellationToken cancellationToken = default)
     {
-        var (store, relative) = Route(path);
-        return store.ReadAsync(relative, cancellationToken);
+        var relative = Route(path);
+        return _workspaceStore.ReadAsync(relative, cancellationToken);
     }
 
     public override Task<bool> DeleteAsync(string path, CancellationToken cancellationToken = default)
     {
-        var (store, relative) = Route(path);
-        return store.DeleteAsync(relative, cancellationToken);
+        var relative = Route(path);
+        return _workspaceStore.DeleteAsync(relative, cancellationToken);
     }
 
     public override Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken = default)
     {
-        var (store, relative) = Route(path);
-        return store.FileExistsAsync(relative, cancellationToken);
+        var relative = Route(path);
+        return _workspaceStore.FileExistsAsync(relative, cancellationToken);
     }
 
     public override Task<IReadOnlyList<FileStoreEntry>> ListChildrenAsync(
         string directory, CancellationToken cancellationToken = default)
     {
-        var (store, relative) = Route(directory);
-        return store.ListChildrenAsync(relative, cancellationToken);
+        var relative = Route(directory);
+        return _workspaceStore.ListChildrenAsync(relative, cancellationToken);
     }
 
     public override Task CreateDirectoryAsync(string directory, CancellationToken cancellationToken = default)
     {
-        var (store, relative) = Route(directory);
-        return store.CreateDirectoryAsync(relative, cancellationToken);
+        var relative = Route(directory);
+        return _workspaceStore.CreateDirectoryAsync(relative, cancellationToken);
     }
 
     /// <summary>
-    /// 把模型给的路径路由到某个盘的 store。三种形态都认：
-    ///   E:/仪器协议文档/x.pdf  带冒号 → E 盘
-    ///   E/仪器协议文档/x.pdf   无冒号、首段单字母 → E 盘
-    ///   temp/notes.txt         普通相对路径 → 默认盘
-    /// 空路径列默认盘根。盘符不预配置——来一个建一个。
+    /// 把模型或前端给的路径严格路由限制在当前用户绑定的工作区内。
+    /// 严禁任何跨盘或超出工作区范围的访问。
     /// </summary>
-    private (FileSystemAgentFileStore Store, string RelativePath) Route(string path)
+    private string Route(string path)
     {
-        if (string.IsNullOrWhiteSpace(path))
-            return (StoreFor(_defaultDrive), string.Empty);
+        if (string.IsNullOrWhiteSpace(path) || path == "." || path == "./")
+        {
+            return string.Empty;
+        }
 
         var normalized = path.Replace('\\', '/').Trim();
 
-        // 1. 带冒号：E:/仪器协议文档/x.pdf → E 盘的 仪器协议文档/x.pdf
+        // 1. 特殊前缀：workspace/ 或 ./workspace/ 或纯 workspace
+        if (normalized.Equals("workspace", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("./workspace", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+        if (normalized.StartsWith("workspace/", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[10..].TrimStart('/');
+        }
+        else if (normalized.StartsWith("./workspace/", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[12..].TrimStart('/');
+        }
+
+        // 2. 检查是否为带工作区前缀的绝对路径（如 D:/temp/Microsoft agent/workspace/demo.txt）
+        if (normalized.StartsWith(_workspaceRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[_workspaceRoot.Length..].TrimStart('/');
+        }
+        // 或带盘符首字母无冒号形式（如 D/temp/Microsoft agent/workspace/demo.txt）
+        else if (normalized.Length >= 2 && normalized[1] == '/' && char.IsAsciiLetter(normalized[0]))
+        {
+            var reconstructed = normalized[..1].ToUpperInvariant() + ":" + normalized[1..];
+            if (reconstructed.StartsWith(_workspaceRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = reconstructed[_workspaceRoot.Length..].TrimStart('/');
+            }
+        }
+
+        // 3. 严格禁止访问外部绝对路径或其它盘符
         if (normalized.Length >= 2 && normalized[1] == ':')
         {
-            if (!TryNormalizeDrive(normalized[..1], out var driveLetter))
-                throw new ArgumentException($"拒绝访问：无法识别的盘符路径：{path}");
-
-            var rest = normalized[2..].TrimStart('/');
-            return (StoreFor(driveLetter), rest);
+            throw new UnauthorizedAccessException($"拒绝访问：操作已严格绑定在用户工作区目录 [{_workspaceRoot}]，禁止访问外部路径 [{path}]。");
         }
 
-        // 2. 无冒号：首段是单字母 → 那个盘
-        //    （提示词引导模型用这种形态；代价是默认盘下单字母目录会被盘符抢先，
-        //     真要访问用 默认盘/xxx 显式绕开。）
-        var slash = normalized.IndexOf('/');
-        var head = slash < 0 ? normalized : normalized[..slash];
-        if (head.Length == 1 && char.IsAsciiLetter(head[0]))
+        var slashIndex = normalized.IndexOf('/');
+        if (slashIndex == 1 && char.IsAsciiLetter(normalized[0]))
         {
-            var driveStore = StoreFor(head);
-            var rest = slash < 0 ? string.Empty : normalized[(slash + 1)..];
-            return (driveStore, rest);
+            throw new UnauthorizedAccessException($"拒绝访问：操作已严格绑定在用户工作区目录 [{_workspaceRoot}]，禁止跨盘访问外部路径 [{path}]。");
         }
 
-        // 3. 普通相对路径 → 默认盘
-        return (StoreFor(_defaultDrive), normalized.TrimStart('/'));
-    }
-
-    /// <summary>按盘符取（或动态创建）该盘的 store。</summary>
-    private FileSystemAgentFileStore StoreFor(string driveLetter)
-    {
-        if (!_stores.TryGetValue(driveLetter, out var store))
+        // 4. 防范目录穿越（Directory Traversal）：如 "../" 或 "a/../../b"
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var stack = new List<string>();
+        foreach (var seg in segments)
         {
-            store = new FileSystemAgentFileStore(driveLetter + ":\\");
-            _stores[driveLetter] = store;
+            if (seg == ".") continue;
+            if (seg == "..")
+            {
+                if (stack.Count > 0)
+                {
+                    stack.RemoveAt(stack.Count - 1);
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException($"拒绝访问：检测到目录穿越，禁止访问工作区外部路径 [{path}]。");
+                }
+            }
+            else
+            {
+                stack.Add(seg);
+            }
         }
 
-        return store;
-    }
-
-    private static bool TryNormalizeDrive(string value, out string driveLetter)
-    {
-        driveLetter = string.Empty;
-        if (string.IsNullOrWhiteSpace(value)) return false;
-
-        var trimmed = value.Trim();
-        if (trimmed.Length == 1 && char.IsAsciiLetter(trimmed[0]))
-        {
-            driveLetter = char.ToUpperInvariant(trimmed[0]).ToString();
-            return true;
-        }
-
-        return false;
+        return string.Join('/', stack);
     }
 }

@@ -1,5 +1,6 @@
 import { memo, useMemo, useRef, useState, useLayoutEffect, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { BarChart2Icon, DatabaseIcon, ZapIcon } from "lucide-react";
 import { type Activity, type RunTokenUsage } from "@deepagent/shared";
 import type { ChatMessage } from "./client-reducer.js";
 import { cn } from "../../lib/utils.js";
@@ -242,72 +243,56 @@ export const StatsLine = memo(function StatsLine({
     [messages, activities, providedUsage]
   );
 
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [truncated, setTruncated] = useState(false);
+  const speed =
+    providedUsage?.tokensPerSecond && providedUsage.tokensPerSecond > 0
+      ? providedUsage.tokensPerSecond
+      : stats.tokensPerSecond;
 
-  // 组织分组内容（完全对齐 DeepSeek Harness StatsLine）
-  const groups: string[] = [];
+  const showSpeed = speed > 0 || (stats.turns > 0 && stats.steps > 0);
+  const cacheHitPercent = usage?.cacheHitPercent ?? 0;
+  const hasUsage = !!usage || messages.length > 0;
 
-  if (stats.steps > 0 || stats.turns > 0) {
-    // 分组 1：轮次与步骤
-    groups.push(`${stats.turns} 轮 · ${stats.steps} 步`);
-
-    // 分组 2：LLM 与工具执行耗时
-    const durations: string[] = [];
-    if (stats.llmMs > 0) durations.push(`LLM ${formatDuration(stats.llmMs)}`);
-    if (stats.toolMs > 0) durations.push(`工具 ${formatDuration(stats.toolMs)}`);
-    if (durations.length > 0) groups.push(durations.join(" · "));
-
-    // 分组 3：首 Token 延迟与吞吐速率
-    const speeds: string[] = [];
-    if (stats.ttftSteps > 0 || stats.ttftMs > 0) {
-      const avgTtft = stats.ttftSteps > 0 ? stats.ttftMs / stats.ttftSteps : stats.ttftMs;
-      speeds.push(`首 token ${formatDuration(avgTtft)}`);
-    }
-    if (stats.tokensPerSecond > 0) {
-      speeds.push(`${formatTokensPerSecond(stats.tokensPerSecond)} tok/s`);
-    }
-    if (speeds.length > 0) groups.push(speeds.join(" · "));
+  if (!hasUsage && !showSpeed && !providedUsage) {
+    return null;
   }
-
-  // 分组 4：缓存命中率与 Token 消耗
-  if (usage && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
-    const tokenParts: string[] = [];
-    if (usage.cacheHitPercent > 0) {
-      tokenParts.push(`缓存命中 ${usage.cacheHitPercent}%`);
-    }
-    tokenParts.push(`输入 ${formatTokens(usage.inputTokens)}`);
-    tokenParts.push(`输出 ${formatTokens(usage.outputTokens)}`);
-    groups.push(tokenParts.join(" · "));
-  }
-
-  const line = groups.join(" | ");
-
-  useLayoutEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-    const measure = () => setTruncated(el.scrollWidth > el.clientWidth);
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [line]);
-
-  if (groups.length === 0) return null;
 
   return (
     <div
-      ref={rootRef}
-      title={truncated ? line : undefined}
-      className="flex items-center justify-center text-[11px] leading-5 text-zinc-500 select-none px-4 py-1.5 mx-auto max-w-4xl overflow-hidden text-ellipsis whitespace-nowrap animate-in fade-in duration-150"
+      className="stats-line flex items-center justify-center text-[11px] leading-5 text-zinc-500 select-none px-4 py-1 mx-auto max-w-4xl overflow-visible whitespace-nowrap animate-in fade-in duration-150"
     >
-      {groups.map((group, i) => (
-        <span key={group} className="inline-flex items-center">
-          {i > 0 && <span className="text-zinc-700 mx-2.5 font-light" aria-hidden="true">|</span>}
-          <span className="font-mono tabular-nums">{group}</span>
+      {/* 参考 agentscope-harness 图标：开头放置 BarChart2Icon */}
+      <BarChart2Icon className="size-3 text-zinc-500 shrink-0 mr-1.5" />
+
+      {/* 1. Token 速度 */}
+      {showSpeed && (
+        <span className="inline-flex items-center">
+          <ZapIcon className="size-3 text-amber-400/90 shrink-0 mr-1" />
+          <span className="font-mono tabular-nums">{formatTokensPerSecond(speed)} tok/s</span>
         </span>
-      ))}
+      )}
+
+      {showSpeed && (
+        <span className="text-zinc-700 mx-2.5 font-light select-none" aria-hidden="true">
+          |
+        </span>
+      )}
+
+      {/* 2. 缓存命中 */}
+      <span className="inline-flex items-center">
+        <DatabaseIcon className="size-3 text-cyan-400/90 shrink-0 mr-1" />
+        <span className="font-mono tabular-nums">缓存命中 {cacheHitPercent}%</span>
+      </span>
+
+      <span className="text-zinc-700 mx-2.5 font-light select-none" aria-hidden="true">
+        |
+      </span>
+
+      {/* 3. 放下来的用量组件 */}
+      <ContextMeter
+        messages={messages}
+        activities={activities}
+        providedUsage={providedUsage}
+      />
     </div>
   );
 });
@@ -428,7 +413,7 @@ export const ContextMeter = memo(function ContextMeter({
             className={usage ? "text-emerald-400" : "text-zinc-500"}
           />
         </svg>
-        <span className="font-sans font-medium">用量 {percent > 0 ? `${percent}%` : ""}</span>
+        <span className="font-sans font-medium">用量 {percent > 0 ? `${percent}%` : "0%"}</span>
       </button>
 
       {/* 弹出的详细统计面板（完全还原 DeepSeek Harness 布局，通过 Portal 挂载防裁剪） */}

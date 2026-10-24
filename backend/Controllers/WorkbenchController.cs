@@ -16,8 +16,12 @@ public sealed class WorkbenchController : ControllerBase
     }
 
     [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public IActionResult GetIndex()
     {
+        Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+        Response.Headers.Pragma = "no-cache";
+        Response.Headers.Expires = "0";
         return Ok(new { workbench = _workbenchService.LoadIndex() });
     }
 

@@ -22,9 +22,14 @@ public sealed class PdfTools
     /// <summary>单次提取的字符上限，防止一次读爆上下文窗口。</summary>
     private const int MaxChars = 32 * 1024;
 
-    private readonly string _defaultDrive;
+    private readonly string? _defaultDrive;
+    private readonly string? _workspaceRoot;
 
-    public PdfTools(string defaultDrive = "D") => _defaultDrive = defaultDrive;
+    public PdfTools(string? defaultDrive = null, string? workspaceRoot = null)
+    {
+        _defaultDrive = defaultDrive;
+        _workspaceRoot = workspaceRoot;
+    }
 
     [Description("提取 PDF 文件的文本内容，用于分析 PDF 文档（协议、报告、手册等）。"
                + "扫描版图片型 PDF 提取不出文字，会明确告诉你。")]
@@ -38,7 +43,7 @@ public sealed class PdfTools
         string systemPath;
         try
         {
-            systemPath = FilePathNormalizer.ToSystemPath(path, _defaultDrive);
+            systemPath = FilePathNormalizer.ToSystemPath(path, _defaultDrive, _workspaceRoot);
         }
         catch (ArgumentException ex)
         {

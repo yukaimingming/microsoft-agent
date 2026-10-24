@@ -30,6 +30,7 @@ import {
   XIcon,
   SunIcon,
   MoonIcon,
+  SmartphoneIcon,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import type { FolderGroup, SessionSummary } from "./use-sessions.js";
@@ -75,6 +76,12 @@ interface WorkspaceSidebarProps {
   theme?: "dark" | "light";
   /** 切换主题回调 */
   onToggleTheme?: () => void;
+  /** 打开微信 ClawBot 扫码连接弹窗 */
+  onOpenWeChatModal?: () => void;
+  /** 个人助手 ClawBot 是否已连接 */
+  wechatConnected?: boolean;
+  /** 个人助手 ClawBot 扫码/连接状态 */
+  wechatStatus?: string;
 }
 
 /**
@@ -154,6 +161,9 @@ export function WorkspaceSidebar({
   onOpenFolderPicker,
   theme = "dark",
   onToggleTheme,
+  onOpenWeChatModal,
+  wechatConnected = false,
+  wechatStatus = "disconnected",
 }: WorkspaceSidebarProps) {
   // 控制“选择工作区文件夹”弹窗
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
@@ -530,24 +540,75 @@ export function WorkspaceSidebar({
           })}
         </div>
 
-        {/* 底部设置入口与黑白主题切换 */}
-        <div className="border-t border-zinc-800/40 p-2.5 flex items-center justify-between gap-1">
+        {/* 底部设置入口、个人微信 ClawBot 手机扫码图标与连接状态、黑白主题切换 */}
+        <div className="border-t border-zinc-800/40 p-2.5 flex items-center justify-between gap-1.5">
           <button
             type="button"
             data-testid="open-settings-modal-btn"
             onClick={onOpenSettings}
-            className="flex flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-[12.5px] text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors"
+            className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] whitespace-nowrap text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors"
           >
-            <SettingsIcon className="size-4 text-zinc-500" />
+            <SettingsIcon className="size-4 shrink-0 text-zinc-500" />
             <span>设置</span>
           </button>
+
+          {/* 设置旁边的手机图标：点击弹出个人微信 ClawBot 二维码（iLink 协议）及实时连接状态显示 */}
+          {onOpenWeChatModal && (
+            <button
+              type="button"
+              data-testid="open-wechat-clawbot-btn"
+              onClick={onOpenWeChatModal}
+              title={
+                wechatConnected
+                  ? "个人助手 ClawBot 已连接 (点击管理微信 iLink 连接)"
+                  : "点击扫码绑定个人微信 ClawBot (iLink 协议)"
+              }
+              aria-label="微信 ClawBot 扫码连接"
+              className={`group relative flex flex-1 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors border ${
+                wechatConnected
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                  : wechatStatus === "scaned"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                    : "border-zinc-800/80 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              }`}
+            >
+              <span className="relative flex shrink-0 items-center justify-center">
+                <SmartphoneIcon
+                  className={`size-4 ${
+                    wechatConnected
+                      ? "text-emerald-400"
+                      : wechatStatus === "scaned"
+                        ? "text-amber-400"
+                        : "text-zinc-400 group-hover:text-emerald-400"
+                  }`}
+                />
+                <span
+                  data-testid="sidebar-clawbot-status-dot"
+                  className={`absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2 ring-black ${
+                    wechatConnected
+                      ? "bg-emerald-400 animate-pulse"
+                      : wechatStatus === "scaned"
+                        ? "bg-amber-400 animate-ping"
+                        : "bg-zinc-500"
+                  }`}
+                />
+              </span>
+              <span data-testid="sidebar-clawbot-status-text" className="truncate">
+                {wechatConnected
+                  ? "ClawBot 已连接"
+                  : wechatStatus === "scaned"
+                    ? "待微信确认"
+                    : "ClawBot 未连接"}
+              </span>
+            </button>
+          )}
 
           {onToggleTheme && (
             <button
               type="button"
               data-testid="sidebar-toggle-theme-btn"
               onClick={onToggleTheme}
-              className="flex size-8 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors"
+              className="flex size-8 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors"
               title={theme === "dark" ? "切换为浅色主题 (Light)" : "切换为深色主题 (Dark)"}
               aria-label="切换黑白主题"
             >

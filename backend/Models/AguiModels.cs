@@ -125,13 +125,17 @@ public sealed class InterruptItem
     [JsonPropertyName("input")]
     public object? Input { get; set; }
 
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = "高影响操作人工审批";
+
     public InterruptItem() { }
-    public InterruptItem(string id, string kind, string name, object? input)
+    public InterruptItem(string id, string kind, string name, object? input, string reason = "高影响操作人工审批")
     {
         Id = id;
         Kind = kind;
         Name = name;
         Input = input;
+        Reason = reason;
     }
 }
 
@@ -555,4 +559,7 @@ public sealed class SessionSummary
 
     [JsonPropertyName("updatedAt")]
     public long UpdatedAt { get; set; }
+
+    [JsonPropertyName("messageCount")]
+    public int MessageCount { get; set; }
 }

@@ -22,9 +22,13 @@ public sealed class AguiStreamAdapter
 
     // 当前思考流状态
     private string? _openReasoningId;
+    private bool _textStartedInCurrentStep;
+    private long _lastTextDeltaAt;
+    private string _lastSubagentName = "subagent";
 
     // 当前正文流状态
     private string? _openTextId;
+    private readonly StringBuilder _pendingTextBuffer = new();
     private readonly StringBuilder _currentTextContent = new();
     private readonly StringBuilder _fullAnswer = new();
 
@@ -105,9 +109,23 @@ public sealed class AguiStreamAdapter
         }
     }
 
+    public async Task NotifyIterationBoundaryAsync()
+    {
+        _textStartedInCurrentStep = false;
+        await EndReasoningAsync();
+        await FlushPendingTextAsProcessAsync();
+    }
+
     public async Task RecordReflectionAsync(string line)
     {
         if (string.IsNullOrWhiteSpace(line)) return;
+
+        await EndReasoningAsync();
+        // 仅当反思未通过（即将触发下一轮重试修正）时，才把当前缓冲文本归入中间过程；若反思通过，保留缓冲文本作为最终总结输出
+        if (line.Contains("未通过", StringComparison.Ordinal) || line.Contains("打回", StringComparison.Ordinal) || line.Contains("重试", StringComparison.Ordinal))
+        {
+            await FlushPendingTextAsProcessAsync();
+        }
 
         // 作为过程活动推送到前端时间线（绝不作为文本消息去抢占正文槽位）
         var refId = "reflection:" + Guid.NewGuid().ToString("N")[..8];
@@ -211,10 +229,24 @@ public sealed class AguiStreamAdapter
 
     private async Task HandleReasoningDeltaAsync(string delta)
     {
-        // 若当前正文流已在输出且未被工具中断，则忽略正文中途零星的思考流重入，避免正文闪跳回思考链
-        if (_openTextId != null)
+        if (_textStartedInCurrentStep)
         {
-            return;
+            var elapsedSinceText = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastTextDeltaAt;
+            // 防护锁：同一 LLM 步内网关在输出前几个正文字后夹带的迟到思考碎片，直接丢弃，严禁把句子切碎成两段或冲刷进过程摘要！
+            if (_pendingTextBuffer.Length <= 16 || elapsedSinceText < 900 || delta.Trim().Length <= 20)
+            {
+                return;
+            }
+
+            // 确认为新一轮迭代开始：将上一轮文本冲刷为过程说明
+            await FlushPendingTextAsProcessAsync();
+            _textStartedInCurrentStep = false;
+        }
+
+        // 如果上一轮/上一步存在尚未落定的文本缓冲或已打开的文本流，说明新一轮推理已启动，前一段文本属于中间过程说明
+        if (_pendingTextBuffer.Length > 0 || _openTextId != null)
+        {
+            await FlushPendingTextAsProcessAsync();
         }
 
         if (_openReasoningId == null)
@@ -232,6 +264,7 @@ public sealed class AguiStreamAdapter
 
     private async Task EndReasoningAsync()
     {
+        _inThinkingTag = false;
         if (_openReasoningId != null)
         {
             await EmitJsonAsync(new Dictionary<string, object?>
@@ -307,24 +340,123 @@ public sealed class AguiStreamAdapter
 
     private async Task AppendTextContentAsync(string delta)
     {
-        if (_openTextId == null && string.IsNullOrWhiteSpace(delta))
+        if (_openTextId == null && _pendingTextBuffer.Length == 0 && string.IsNullOrWhiteSpace(delta))
+            return;
+
+        _textStartedInCurrentStep = true;
+        _lastTextDeltaAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        await EndReasoningAsync();
+
+        // 若最终回答流已开启，实时增量推送每一个 token
+        if (_openTextId != null)
+        {
+            _fullAnswer.Append(delta);
+            _currentTextContent.Append(delta);
+            await EmitJsonAsync(new Dictionary<string, object?>
+            {
+                ["type"] = AguiEventType.TEXT_MESSAGE_CONTENT,
+                ["messageId"] = _openTextId,
+                ["delta"] = delta
+            });
+            return;
+        }
+
+        _pendingTextBuffer.Append(delta);
+
+        // 短小的工具调用前导说明通常不超过 100 字；当累积达到 140 字符时，说明已进入最终长篇回答，立即开启实时流式下发
+        if (_pendingTextBuffer.Length >= 140)
+        {
+            await FlushPendingTextAsFinalAsync();
+        }
+    }
+
+    private async Task FlushPendingTextAsProcessAsync()
+    {
+        if (_pendingTextBuffer.Length > 0)
+        {
+            var pending = _pendingTextBuffer.ToString();
+            _pendingTextBuffer.Clear();
+            if (!string.IsNullOrWhiteSpace(pending))
+            {
+                await EndReasoningAsync();
+                var processMsgId = "msg-process-" + Guid.NewGuid();
+                await EmitJsonAsync(new Dictionary<string, object?>
+                {
+                    ["type"] = AguiEventType.TEXT_MESSAGE_START,
+                    ["messageId"] = processMsgId,
+                    ["role"] = "assistant",
+                    ["isProcess"] = true
+                });
+                await EmitJsonAsync(new Dictionary<string, object?>
+                {
+                    ["type"] = AguiEventType.CUSTOM,
+                    ["name"] = AguiEventType.CUSTOM_PROCESS_MESSAGE,
+                    ["value"] = new Dictionary<string, object?>
+                    {
+                        ["messageId"] = processMsgId,
+                        ["runId"] = _runId
+                    }
+                });
+                await EmitJsonAsync(new Dictionary<string, object?>
+                {
+                    ["type"] = AguiEventType.TEXT_MESSAGE_CONTENT,
+                    ["messageId"] = processMsgId,
+                    ["delta"] = pending
+                });
+                await EmitJsonAsync(new Dictionary<string, object?>
+                {
+                    ["type"] = AguiEventType.TEXT_MESSAGE_END,
+                    ["messageId"] = processMsgId
+                });
+            }
+        }
+
+        if (_openTextId != null && !string.IsNullOrWhiteSpace(_currentTextContent.ToString()))
+        {
+            _fullAnswer.Clear();
+            await EmitJsonAsync(new Dictionary<string, object?>
+            {
+                ["type"] = AguiEventType.CUSTOM,
+                ["name"] = AguiEventType.CUSTOM_PROCESS_MESSAGE,
+                ["value"] = new Dictionary<string, object?>
+                {
+                    ["messageId"] = _openTextId,
+                    ["runId"] = _runId
+                }
+            });
+            await EndTextAsync();
+        }
+        else if (_openTextId != null)
+        {
+            await EndTextAsync();
+        }
+    }
+
+    private async Task FlushPendingTextAsFinalAsync()
+    {
+        if (_pendingTextBuffer.Length == 0)
+            return;
+
+        var finalContent = _pendingTextBuffer.ToString();
+        _pendingTextBuffer.Clear();
+        if (string.IsNullOrWhiteSpace(finalContent))
             return;
 
         await EndReasoningAsync();
-
         if (_openTextId == null)
         {
             await StartTextAsync();
         }
 
-        _fullAnswer.Append(delta);
-        _currentTextContent.Append(delta);
+        _fullAnswer.Append(finalContent);
+        _currentTextContent.Append(finalContent);
 
+        // 下发最终总结内容（前端 stream-playback 队列会按拍以 18ms 节拍平滑流式呈现）
         await EmitJsonAsync(new Dictionary<string, object?>
         {
             ["type"] = AguiEventType.TEXT_MESSAGE_CONTENT,
             ["messageId"] = _openTextId,
-            ["delta"] = delta
+            ["delta"] = finalContent
         });
     }
 
@@ -344,45 +476,34 @@ public sealed class AguiStreamAdapter
 
     private async Task HandleFunctionCallAsync(FunctionCallContent call)
     {
+        _textStartedInCurrentStep = false;
         await EndReasoningAsync();
-
-        // 伴随过程说明标记
-        if (_openTextId != null && !string.IsNullOrWhiteSpace(_currentTextContent.ToString()))
-        {
-            await EmitJsonAsync(new Dictionary<string, object?>
-            {
-                ["type"] = AguiEventType.CUSTOM,
-                ["name"] = AguiEventType.CUSTOM_PROCESS_MESSAGE,
-                ["value"] = new Dictionary<string, object?>
-                {
-                    ["messageId"] = _openTextId,
-                    ["runId"] = _runId
-                }
-            });
-            await EndTextAsync();
-        }
-        else if (_openTextId != null)
-        {
-            await EndTextAsync();
-        }
+        await FlushPendingTextAsProcessAsync();
 
         var callId = call.CallId ?? Guid.NewGuid().ToString("N")[..8];
         var toolName = call.Name;
 
-        // 处理 todos_* 工具调用
+        // 处理 todos_* 工具调用：同步更新右侧待办面板，同时在对话过程时间线里生成对应的工具活动行
         if (toolName.StartsWith("todos_", StringComparison.Ordinal))
         {
             ApplyTodoCall(toolName, call.Arguments);
             await EmitTodoActivityAsync();
-            return;
         }
 
         // 处理子智能体委派调用
         if (toolName.StartsWith("background_agents_", StringComparison.Ordinal))
         {
             var subagentId = "subagent:" + callId;
-            var agentName = call.Arguments?.TryGetValue("agentName", out var n) == true ? n?.ToString() ?? "subagent" : "subagent";
-            var taskDesc = call.Arguments?.TryGetValue("description", out var d) == true ? d?.ToString() ?? "" : "";
+            var agentName = ExtractSubagentName(call.Arguments);
+            if (!string.IsNullOrWhiteSpace(agentName))
+            {
+                _lastSubagentName = agentName;
+            }
+            else
+            {
+                agentName = _lastSubagentName;
+            }
+            var taskDesc = ExtractSubagentDescription(call.Arguments);
             var subActivity = new Activity(
                 subagentId,
                 "subagent",
@@ -396,6 +517,7 @@ public sealed class AguiStreamAdapter
             };
             _activities[subagentId] = subActivity;
             await EmitActivityAsync(subActivity);
+            await Task.Delay(180);
             return;
         }
 
@@ -435,10 +557,14 @@ public sealed class AguiStreamAdapter
             _activities[fileActivityId] = fileActivity;
             await EmitActivityAsync(fileActivity);
         }
+
+        // 时序步进：确保本地瞬时工具在执行阶段（running）清晰呈现闪光动画，完成后收敛为静态
+        await Task.Delay(180);
     }
 
     private async Task HandleFunctionResultAsync(FunctionResultContent result)
     {
+        _textStartedInCurrentStep = false;
         var callId = result.CallId ?? string.Empty;
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var rawOutput = result.Result?.ToString() ?? string.Empty;
@@ -497,15 +623,22 @@ public sealed class AguiStreamAdapter
             fileActivity.EndedAt = now;
             fileActivity.DurationMs = Math.Max(0, now - fileActivity.StartedAt);
             fileActivity.Status = "completed";
-            fileActivity.Subtitle = "完成";
+            if (string.IsNullOrEmpty(fileActivity.Subtitle))
+            {
+                fileActivity.Subtitle = "完成";
+            }
             await EmitActivityAsync(fileActivity);
         }
+
+        // 工具完成后的微小时序步进
+        await Task.Delay(60);
     }
 
     private async Task HandleApprovalRequestAsync(ToolApprovalRequestContent approval)
     {
+        _textStartedInCurrentStep = false;
         await EndReasoningAsync();
-        await EndTextAsync();
+        await FlushPendingTextAsProcessAsync();
 
         var interruptId = "interrupt-" + Guid.NewGuid().ToString("N")[..8];
         var toolCall = approval.ToolCall as FunctionCallContent;
@@ -581,22 +714,22 @@ public sealed class AguiStreamAdapter
         _finished = true;
         await EndReasoningAsync();
 
-        // 终极正文防丢兜底：若整轮执行了工具或文件变更但模型未产生最终正文答复，自动补充结构化结果总结
-        if (string.IsNullOrWhiteSpace(_fullAnswer.ToString()))
+        var preFinishNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        // 在流式输出最终总结之前，先将所有仍在运行中的过程活动收敛为 completed，
+        // 确保前端在收到第一片最终总结增量时即可立即收起过程面板并实时流式渲染总结正文
+        if (!_todoItems.IsEmpty)
         {
-            var summary = BuildFallbackSummary();
-            if (!string.IsNullOrEmpty(summary))
+            foreach (var key in _todoItems.Keys.ToList())
             {
-                await StartTextAsync();
-                await AppendTextContentAsync(summary);
+                if (_todoItems.TryGetValue(key, out var item) && !item.Done)
+                {
+                    _todoItems[key] = (item.Title, true);
+                }
             }
+            await EmitTodoActivityAsync();
         }
 
-        await EndTextAsync();
-
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        // 将还在运行中的活动标记完成
         foreach (var act in _activities.Values)
         {
             if (act.Status == "running" || act.Status == "waiting_approval")
@@ -605,12 +738,29 @@ public sealed class AguiStreamAdapter
                 act.Subtitle = "完成";
                 if (act.EndedAt == 0)
                 {
-                    act.EndedAt = now;
-                    act.DurationMs = Math.Max(0, now - act.StartedAt);
+                    act.EndedAt = preFinishNow;
+                    act.DurationMs = Math.Max(0, preFinishNow - act.StartedAt);
                 }
                 await EmitActivityAsync(act);
             }
         }
+
+        await FlushPendingTextAsFinalAsync();
+
+        // 终极正文防丢兜底：若整轮执行了工具或文件变更但模型未产生最终正文答复，自动补充结构化结果总结
+        if (string.IsNullOrWhiteSpace(_fullAnswer.ToString()))
+        {
+            var summary = BuildFallbackSummary();
+            if (!string.IsNullOrEmpty(summary))
+            {
+                _pendingTextBuffer.Append(summary);
+                await FlushPendingTextAsFinalAsync();
+            }
+        }
+
+        await EndTextAsync();
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         var snapshot = new RunSnapshot
         {
@@ -687,30 +837,129 @@ public sealed class AguiStreamAdapter
     private void ApplyTodoCall(string toolName, IDictionary<string, object?>? arguments)
     {
         if (arguments is null) return;
-        if (toolName == "todos_complete" && arguments.TryGetValue("items", out var itemsObj))
+
+        if (toolName == "todos_add")
         {
-            var el = ToJsonElement(itemsObj);
-            if (el is { ValueKind: JsonValueKind.Array })
+            if (arguments.TryGetValue("items", out var itemsObj))
             {
-                foreach (var item in el.Value.EnumerateArray())
+                var el = ToJsonElement(itemsObj);
+                if (el is { ValueKind: JsonValueKind.Array })
                 {
-                    if (item.TryGetProperty("id", out var idProp) && _todoItems.TryGetValue(idProp.GetInt32(), out var val))
+                    foreach (var item in el.Value.EnumerateArray())
                     {
-                        _todoItems[idProp.GetInt32()] = (val.Title, true);
+                        var title = item.ValueKind == JsonValueKind.String
+                            ? item.GetString()
+                            : (item.TryGetProperty("title", out var t) ? t.GetString() : item.ToString());
+                        if (!string.IsNullOrWhiteSpace(title))
+                        {
+                            var nextId = _todoItems.IsEmpty ? 1 : _todoItems.Keys.Max() + 1;
+                            _todoItems[nextId] = (title.Trim(), false);
+                        }
                     }
                 }
             }
-        }
-        else if (toolName == "todos_remove" && arguments.TryGetValue("ids", out var idsObj))
-        {
-            var el = ToJsonElement(idsObj);
-            if (el is { ValueKind: JsonValueKind.Array })
+            else if (arguments.TryGetValue("title", out var titleObj) || arguments.TryGetValue("item", out titleObj))
             {
-                foreach (var idEl in el.Value.EnumerateArray())
+                var title = titleObj?.ToString();
+                if (!string.IsNullOrWhiteSpace(title))
                 {
-                    _todoItems.TryRemove(idEl.GetInt32(), out _);
+                    var nextId = _todoItems.IsEmpty ? 1 : _todoItems.Keys.Max() + 1;
+                    _todoItems[nextId] = (title.Trim(), false);
                 }
             }
+        }
+        else if (toolName == "todos_complete")
+        {
+            void MarkDone(int id)
+            {
+                if (_todoItems.TryGetValue(id, out var val))
+                {
+                    _todoItems[id] = (val.Title, true);
+                }
+            }
+
+            void TryParseAndMark(object? obj)
+            {
+                if (obj == null) return;
+                var el = ToJsonElement(obj);
+                if (el == null) return;
+
+                if (el.Value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in el.Value.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var idNum))
+                        {
+                            MarkDone(idNum);
+                        }
+                        else if (item.ValueKind == JsonValueKind.String && int.TryParse(item.GetString(), out var idStr))
+                        {
+                            MarkDone(idStr);
+                        }
+                        else if (item.ValueKind == JsonValueKind.Object)
+                        {
+                            if (item.TryGetProperty("id", out var idProp))
+                            {
+                                if (idProp.ValueKind == JsonValueKind.Number && idProp.TryGetInt32(out var id))
+                                {
+                                    MarkDone(id);
+                                }
+                                else if (idProp.ValueKind == JsonValueKind.String && int.TryParse(idProp.GetString(), out var idParsed))
+                                {
+                                    MarkDone(idParsed);
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (el.Value.ValueKind == JsonValueKind.Number && el.Value.TryGetInt32(out var singleId))
+                {
+                    MarkDone(singleId);
+                }
+                else if (el.Value.ValueKind == JsonValueKind.String && int.TryParse(el.Value.GetString(), out var parsedSingleId))
+                {
+                    MarkDone(parsedSingleId);
+                }
+            }
+
+            if (arguments.TryGetValue("items", out var itemsObj)) TryParseAndMark(itemsObj);
+            if (arguments.TryGetValue("ids", out var idsObj)) TryParseAndMark(idsObj);
+            if (arguments.TryGetValue("id", out var idObj)) TryParseAndMark(idObj);
+            if (arguments.TryGetValue("todo_id", out var todoIdObj)) TryParseAndMark(todoIdObj);
+        }
+        else if (toolName == "todos_remove")
+        {
+            void RemoveId(int id) => _todoItems.TryRemove(id, out _);
+
+            void TryParseAndRemove(object? obj)
+            {
+                if (obj == null) return;
+                var el = ToJsonElement(obj);
+                if (el == null) return;
+
+                if (el.Value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in el.Value.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var idNum))
+                        {
+                            RemoveId(idNum);
+                        }
+                        else if (item.ValueKind == JsonValueKind.String && int.TryParse(item.GetString(), out var idStr))
+                        {
+                            RemoveId(idStr);
+                        }
+                    }
+                }
+                else if (el.Value.ValueKind == JsonValueKind.Number && el.Value.TryGetInt32(out var singleId))
+                {
+                    RemoveId(singleId);
+                }
+            }
+
+            if (arguments.TryGetValue("ids", out var idsObj)) TryParseAndRemove(idsObj);
+            if (arguments.TryGetValue("id", out var idObj)) TryParseAndRemove(idObj);
+            if (arguments.TryGetValue("items", out var itemsObj)) TryParseAndRemove(itemsObj);
         }
     }
 
@@ -735,20 +984,42 @@ public sealed class AguiStreamAdapter
     private async Task EmitTodoActivityAsync()
     {
         if (_todoItems.IsEmpty) return;
-        var list = _todoItems.OrderBy(kv => kv.Key).Select(kv => new TodoItem(kv.Value.Title, kv.Value.Done ? "completed" : "pending")).ToList();
-        var completed = list.Count(i => i.Status == "completed");
+        var ordered = _todoItems.OrderBy(kv => kv.Key).ToList();
+        var completed = ordered.Count(kv => kv.Value.Done);
+        var total = ordered.Count;
+        var isAllDone = completed == total;
+
+        var list = new List<TodoItem>();
+        bool markedInProgress = false;
+        foreach (var kv in ordered)
+        {
+            if (kv.Value.Done)
+            {
+                list.Add(new TodoItem(kv.Value.Title, "completed"));
+            }
+            else if (!markedInProgress && !isAllDone)
+            {
+                list.Add(new TodoItem(kv.Value.Title, "in_progress"));
+                markedInProgress = true;
+            }
+            else
+            {
+                list.Add(new TodoItem(kv.Value.Title, "pending"));
+            }
+        }
+
         var todoId = "todo:" + _runId;
 
         var todoActivity = new Activity(
             todoId,
             "todo",
-            "running",
+            isAllDone ? "completed" : "running",
             "待办任务清单",
             _startedAt)
         {
             RunId = _runId,
-            Subtitle = $"进行中 ({completed}/{list.Count})",
-            Detail = new TodoDetail(list, completed, list.Count)
+            Subtitle = isAllDone ? $"已全部完成 ({completed}/{total})" : $"进行中 ({completed}/{total})",
+            Detail = new TodoDetail(list, completed, total)
         };
         _activities[todoId] = todoActivity;
         await EmitActivityAsync(todoActivity);
@@ -909,10 +1180,38 @@ public sealed class AguiStreamAdapter
     private static string ExtractPath(IDictionary<string, object?>? arguments)
     {
         if (arguments is null) return string.Empty;
-        foreach (var key in new[] { "path", "filePath", "file_path", "directory", "dir_path" })
+        foreach (var key in new[] { "fileName", "path", "filePath", "file_path", "directory", "dir_path" })
         {
             if (arguments.TryGetValue(key, out var val) && val is not null)
                 return val.ToString() ?? string.Empty;
+        }
+        return string.Empty;
+    }
+
+    private static string ExtractSubagentName(IDictionary<string, object?>? arguments)
+    {
+        if (arguments is null) return string.Empty;
+        foreach (var key in new[] { "agentName", "agent_name", "agent", "name" })
+        {
+            if (arguments.TryGetValue(key, out var val) && val is not null)
+            {
+                var str = val.ToString()?.Trim();
+                if (!string.IsNullOrEmpty(str)) return str;
+            }
+        }
+        return string.Empty;
+    }
+
+    private static string ExtractSubagentDescription(IDictionary<string, object?>? arguments)
+    {
+        if (arguments is null) return string.Empty;
+        foreach (var key in new[] { "description", "prompt", "task", "input", "message" })
+        {
+            if (arguments.TryGetValue(key, out var val) && val is not null)
+            {
+                var str = val.ToString()?.Trim();
+                if (!string.IsNullOrEmpty(str)) return str;
+            }
         }
         return string.Empty;
     }

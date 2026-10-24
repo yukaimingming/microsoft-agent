@@ -122,6 +122,14 @@ export function useProviderSettings() {
     setActiveModelId(null);
   }, []);
 
+  /**
+   * 按厂商分组一键切换提供商与模型（供底部提示词输入框分组模型选择器直接调用）。
+   */
+  const selectProviderModel = useCallback((providerId: string, modelId: string) => {
+    setActiveProviderId(providerId);
+    setActiveModelId(modelId);
+  }, []);
+
   const save = useCallback(
     async (draft: ProviderDraft): Promise<{ ok: boolean; error?: string }> => {
       // 服务端要求 efforts 至少一项；用户把所有档位都取消勾选时回退到三档，
@@ -264,6 +272,7 @@ export function useProviderSettings() {
     setActiveProviderId: selectProvider,
     activeModelId,
     setActiveModelId,
+    selectProviderModel,
     currentModelId,
     effort,
     setEffort,

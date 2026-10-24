@@ -15,29 +15,62 @@ namespace MafHarnessDemo.App.Infrastructure.FileStore;
 /// </summary>
 internal static class FilePathNormalizer
 {
-    public static string ToSystemPath(string path, string defaultDrive = "D")
+    public static string ToSystemPath(string path, string? defaultDrive = null, string? workspaceRoot = null)
     {
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("路径不能为空", nameof(path));
 
         var normalized = path.Replace('\\', '/').Trim();
 
-        // 已带冒号：E:/x 或 E:\x —— 统一成反斜杠
-        if (normalized.Length >= 2 && normalized[1] == ':')
-            return normalized.Replace('/', '\\');
+        var ws = !string.IsNullOrWhiteSpace(workspaceRoot)
+            ? Path.GetFullPath(workspaceRoot).Replace('\\', '/').TrimEnd('/')
+            : null;
 
-        // 无冒号、首段单字母：E/x → E:\x
-        var slash = normalized.IndexOf('/');
-        var head = slash < 0 ? normalized : normalized[..slash];
-        if (head.Length == 1 && char.IsAsciiLetter(head[0]))
+        if (ws != null)
         {
-            var rest = slash < 0 ? string.Empty : normalized[(slash + 1)..];
-            var drive = char.ToUpperInvariant(head[0]);
-            return rest.Length == 0 ? $"{drive}:\\" : $"{drive}:\\{rest.Replace('/', '\\')}";
+            // 特殊前缀：workspace/ 或 ./workspace/ 或纯 workspace
+            if (normalized.Equals("workspace", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("./workspace", StringComparison.OrdinalIgnoreCase))
+            {
+                return ws.Replace('/', '\\');
+            }
+            if (normalized.StartsWith("workspace/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[10..].TrimStart('/');
+            }
+            else if (normalized.StartsWith("./workspace/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[12..].TrimStart('/');
+            }
+            else if (normalized.StartsWith(ws, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[ws.Length..].TrimStart('/');
+            }
+            else if ((normalized.Length >= 2 && normalized[1] == ':') || (normalized.IndexOf('/') == 1 && char.IsAsciiLetter(normalized[0])))
+            {
+                throw new UnauthorizedAccessException($"拒绝访问：操作已严格绑定在用户工作区目录 [{ws}]，禁止访问外部路径 [{path}]。");
+            }
+
+            // 目录穿越防范
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var stack = new List<string>();
+            foreach (var seg in segments)
+            {
+                if (seg == ".") continue;
+                if (seg == "..")
+                {
+                    if (stack.Count > 0) stack.RemoveAt(stack.Count - 1);
+                    else throw new UnauthorizedAccessException($"拒绝访问：检测到目录穿越，禁止访问工作区外部路径 [{path}]。");
+                }
+                else
+                {
+                    stack.Add(seg);
+                }
+            }
+
+            return Path.Combine(ws, string.Join('/', stack)).Replace('/', '\\');
         }
 
-        // 无盘符相对路径 → 拼默认盘
-        var driveLetter = string.IsNullOrWhiteSpace(defaultDrive) ? "D" : defaultDrive.Trim()[..1].ToUpperInvariant();
-        return $"{driveLetter}:\\{normalized.Replace('/', '\\')}";
+        return Path.GetFullPath(normalized);
     }
 }

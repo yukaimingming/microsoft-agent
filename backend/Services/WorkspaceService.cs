@@ -8,12 +8,61 @@ public sealed class WorkspaceService
 
     public WorkspaceService(IConfiguration configuration)
     {
-        var configured = configuration["Workspace:Root"];
-        _currentWorkspaceRoot = !string.IsNullOrWhiteSpace(configured)
-            ? Path.GetFullPath(configured)
-            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "workspace"));
-        
+        var configured = configuration["Workspace:Root"] ?? configuration["FileAccess:WorkspaceRoot"];
+        _currentWorkspaceRoot = ResolveWorkspaceRoot(configured);
         Directory.CreateDirectory(_currentWorkspaceRoot);
+    }
+
+    /// <summary>
+    /// 解析本地根目录下的 workspace 目录，杜绝落入系统盘根目录。
+    /// </summary>
+    public static string ResolveWorkspaceRoot(string? configured)
+    {
+        // 1. 若显式配置了绝对路径，直接使用
+        if (!string.IsNullOrWhiteSpace(configured) && Path.IsPathRooted(configured))
+        {
+            return Path.GetFullPath(configured);
+        }
+
+        var folderName = string.IsNullOrWhiteSpace(configured) ? "workspace" : configured.Trim();
+
+        // 2. 向上探测 Git 仓库根目录或本地项目根目录（包含 .git，或同时包含 backend 和 frontend）
+        var candidate = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (candidate != null)
+        {
+            if (Directory.Exists(Path.Combine(candidate.FullName, ".git")) ||
+                (Directory.Exists(Path.Combine(candidate.FullName, "backend")) && Directory.Exists(Path.Combine(candidate.FullName, "frontend"))))
+            {
+                return Path.GetFullPath(Path.Combine(candidate.FullName, folderName));
+            }
+            candidate = candidate.Parent;
+        }
+
+        // 3. 基于 AppContext.BaseDirectory 向上探测（应对从 bin/Debug 目录下直接执行）
+        var appBase = new DirectoryInfo(AppContext.BaseDirectory);
+        while (appBase != null)
+        {
+            if (Directory.Exists(Path.Combine(appBase.FullName, ".git")) ||
+                (Directory.Exists(Path.Combine(appBase.FullName, "backend")) && Directory.Exists(Path.Combine(appBase.FullName, "frontend"))))
+            {
+                return Path.GetFullPath(Path.Combine(appBase.FullName, folderName));
+            }
+            appBase = appBase.Parent;
+        }
+
+        // 4. 若未找到仓库根，尝试查找已存在的 workspace 目录
+        var current = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (current != null)
+        {
+            var wsCandidate = Path.Combine(current.FullName, folderName);
+            if (Directory.Exists(wsCandidate) && !string.Equals(current.Name, "backend", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.GetFullPath(wsCandidate);
+            }
+            current = current.Parent;
+        }
+
+        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), folderName));
     }
 
     public string CurrentWorkspaceRoot => _currentWorkspaceRoot;

@@ -70,7 +70,7 @@ export interface ClientState {
 /** 所有状态转移动作。 */
 export type ClientAction =
   | { type: "addUserMessage"; id: string; content: string; attachments?: Array<FileUIPart & { id: string }> }
-  | { type: "startPendingAssistant"; messageId: string; startedAt: number }
+  | { type: "startPendingAssistant"; messageId: string; startedAt: number; runId?: string }
   | { type: "startAssistant"; runId: string; messageId: string; isProcess?: boolean }
   | { type: "appendAssistant"; messageId: string; delta: string }
   | { type: "endAssistant"; messageId: string }
@@ -200,6 +200,7 @@ function findCurrentAssistantIndex(
 export function reduceClientEvent(state: ClientState, action: ClientAction): ClientState {
   switch (action.type) {
     case "addUserMessage":
+      resetReasoningBindings(state.threadId);
       return {
         ...state,
         messages: [
@@ -225,6 +226,7 @@ export function reduceClientEvent(state: ClientState, action: ClientAction): Cli
             role: "assistant",
             content: "",
             streaming: false,
+            runId: action.runId,
             reasoning: "",
             reasoningStreaming: true,
             reasoningStartedAt: action.startedAt,

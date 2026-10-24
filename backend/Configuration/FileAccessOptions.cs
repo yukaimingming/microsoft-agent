@@ -10,8 +10,11 @@ public sealed class FileAccessOptions
 {
     public const string SectionName = "FileAccess";
 
-    /// <summary>无盘符相对路径的默认落点盘符，如 "C" 或 "D"。</summary>
-    public string DefaultDrive { get; set; } = "D";
+    /// <summary>工作区根目录配置（默认指向本地根目录下的 workspace 目录）。</summary>
+    public string WorkspaceRoot { get; set; } = "workspace";
+
+    /// <summary>可选盘符兼容字段（已弃用默认驱动器，优先使用本地工作区）。</summary>
+    public string? DefaultDrive { get; set; }
 
     /// <summary>true 时只保留读工具（read/read_lines/ls/grep），不注册任何写工具。</summary>
     public bool DisableWriteTools { get; set; }

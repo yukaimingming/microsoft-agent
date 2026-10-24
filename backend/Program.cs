@@ -39,8 +39,12 @@ builder.Services.AddSingleton<ProviderService>();
 builder.Services.AddSingleton<WorkbenchService>();
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddSingleton<MafAgentManager>();
+builder.Services.AddSingleton<WeChatIlinkService>();
 
 var app = builder.Build();
+
+// 预热 WeChatIlinkService（若已有持久化凭据则自动恢复 iLink 长轮询连接）
+_ = app.Services.GetRequiredService<WeChatIlinkService>();
 
 app.UseCors();
 app.MapControllers();

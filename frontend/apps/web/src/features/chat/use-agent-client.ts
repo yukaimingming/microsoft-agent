@@ -23,7 +23,14 @@ import {
   type ClientAction,
   type ClientState,
 } from "./client-reducer.js";
-import { isSettledRunStatus } from "./stream-playback.js";
+import {
+  collectProcessMessageIds,
+  hasLookaheadSignalForMessage,
+  isSettledRunStatus,
+  queuedContentLength,
+  REVEAL_CHARS,
+  takeRevealStep,
+} from "./stream-playback.js";
 import type { PermissionMode } from "@deepagent/shared";
 
 /** 发起一轮运行时需要透传给服务端适配层的配置。 */
@@ -155,9 +162,11 @@ export function useAgentClient(serverUrl: string): AgentClient {
     setThreads(threadsRef.current);
   }, []);
 
-  const clearPlayback = useCallback((_threadId: string): void => {
-    // 纯真流式直通模式：无需排队
-  }, []);
+  const clearPlayback = useCallback((threadId: string): void => {
+    playbackQueuesRef.current.set(threadId, []);
+    lookaheadWaitingRef.current.delete(threadId);
+    wakePlayback(threadId);
+  }, [wakePlayback]);
 
   /** 更新某个线程的运行中标记。 */
   const setRunningFor = useCallback((threadId: string, running: boolean): void => {
@@ -171,23 +180,188 @@ export function useAgentClient(serverUrl: string): AgentClient {
     if (isSettledRunStatus(status)) setRunningFor(threadId, false);
   }, [setRunningFor]);
 
-  /** 冲刷指定线程队列（真流式直通模式下无需二次冲刷）。 */
-  const flushPlayback = useCallback((_threadId: string): void => {
-    // 真实流式下所有事件均已同步应用
-  }, []);
+  /** 同步按顺序冲刷指定线程队列中剩余的全部事件（用于报错或强制兜底）。 */
+  const flushPlayback = useCallback((threadId: string): void => {
+    lookaheadWaitingRef.current.delete(threadId);
+    wakePlayback(threadId);
+    const queue = playbackQueuesRef.current.get(threadId);
+    if (!queue || queue.length === 0) return;
+    const processIds = collectProcessMessageIds(queue);
+    while (queue.length > 0) {
+      if (cancelledRef.current.has(threadId)) {
+        queue.length = 0;
+        break;
+      }
+      let next = queue.shift();
+      if (!next) break;
+      if (next.type === EventType.TEXT_MESSAGE_START) {
+        const msgId = (next as { messageId?: string }).messageId ?? "";
+        if (msgId && processIds.has(msgId)) {
+          next = { ...next, isProcess: true } as BaseEvent;
+        }
+      }
+      const current = threadsRef.current[threadId] ?? createInitialState(threadId);
+      applyActions(threadId, eventToActions(next, current));
+    }
+    releaseRunningIfSettled(threadId);
+  }, [applyActions, releaseRunningIfSettled, wakePlayback]);
 
-  /** 等待回放完毕（真流式直通模式下瞬时就绪）。 */
-  const waitForPlayback = useCallback(async (_threadId: string): Promise<void> => {
-    return Promise.resolve();
-  }, []);
+  const pumpPlaybackRef = useRef<(threadId: string) => void>(() => {});
 
-  /** 收到服务端 SSE 事件：即时、同步归约进当前状态，杜绝任何假打字机拆包和人为延时！ */
+  /** 等待指定线程的回放队列自然按拍播放完毕。 */
+  const waitForPlayback = useCallback(async (threadId: string): Promise<void> => {
+    for (;;) {
+      const isHidden = typeof document !== "undefined" && document.hidden;
+      if (isHidden) {
+        flushPlayback(threadId);
+        return;
+      }
+      const pending = playbackQueuesRef.current.get(threadId);
+      const active = playbackActiveRef.current.has(threadId);
+      if (!active && (!pending || pending.length === 0)) return;
+      if (!active && pending && pending.length > 0) pumpPlaybackRef.current(threadId);
+      if (cancelledRef.current.has(threadId)) return;
+      await new Promise((resolve) => setTimeout(resolve, 12));
+    }
+  }, [flushPlayback]);
+
+  const pumpPlayback = useCallback((threadId: string): void => {
+    if (playbackActiveRef.current.has(threadId)) return;
+    playbackActiveRef.current.add(threadId);
+    const queue = playbackQueuesRef.current.get(threadId) ?? [];
+    playbackQueuesRef.current.set(threadId, queue);
+    const step = async (): Promise<void> => {
+      try {
+        while (queue.length > 0) {
+          if (cancelledRef.current.has(threadId)) {
+            queue.length = 0;
+            break;
+          }
+          let next = queue[0];
+          if (!next) break;
+
+          const isHidden = typeof document !== "undefined" && document.hidden;
+
+          // 对即将开始揭示的文本消息做短暂前瞻：若它是伴随工具调用的简短过程说明，
+          // 等 PROCESS_MESSAGE / ACTIVITY_DELTA 进队后再揭示第 1 个字，使其直接从时间线内部流式长出。
+          // 切到后台标签页时跳过前瞻等待，避免后台被浏览器降频节流。
+          if (next.type === EventType.TEXT_MESSAGE_START) {
+            const msgId = (next as { messageId?: string }).messageId ?? "";
+            if (
+              !isHidden &&
+              msgId &&
+              !hasLookaheadSignalForMessage(queue, msgId) &&
+              !lookaheadDoneRef.current.has(msgId)
+            ) {
+              lookaheadDoneRef.current.add(msgId);
+              lookaheadWaitingRef.current.set(threadId, msgId);
+              await new Promise<void>((resolve) => {
+                const timer = setTimeout(() => {
+                  lookaheadWaitingRef.current.delete(threadId);
+                  playbackWakeRef.current.delete(threadId);
+                  resolve();
+                }, 1200);
+                playbackWakeRef.current.set(threadId, () => {
+                  clearTimeout(timer);
+                  lookaheadWaitingRef.current.delete(threadId);
+                  playbackWakeRef.current.delete(threadId);
+                  resolve();
+                });
+              });
+              if (cancelledRef.current.has(threadId)) {
+                queue.length = 0;
+                break;
+              }
+              next = queue[0];
+              if (!next) break;
+            }
+          }
+
+          const processIds = collectProcessMessageIds(queue);
+          if (next.type === EventType.TEXT_MESSAGE_START) {
+            const msgId = (next as { messageId?: string }).messageId ?? "";
+            if (msgId && processIds.has(msgId)) {
+              next = { ...next, isProcess: true } as BaseEvent;
+              queue[0] = next;
+            }
+          } else if (next.type === EventType.TEXT_MESSAGE_CONTENT) {
+            const msgId = (next as { messageId?: string }).messageId ?? "";
+            if (msgId && processIds.has(msgId)) {
+              applyActions(threadId, [{ type: "markProcessMessage", messageId: msgId }]);
+            }
+          }
+
+          const backlog = queuedContentLength(queue);
+          const isReasoning = next.type === EventType.REASONING_MESSAGE_CONTENT;
+          // 后台标签页时不限速（用户不在视野中，直接大块推进，不卡在后台）；前台时维持人性化的打字与阅读节奏
+          const dynamicStep = isHidden
+            ? 65536
+            : isReasoning
+              ? 4096
+              : backlog > 48
+                ? Math.min(20, Math.max(REVEAL_CHARS, Math.ceil(backlog / 18)))
+                : REVEAL_CHARS;
+          const reveal = takeRevealStep(next, dynamicStep);
+          const waitMs = isHidden || isReasoning ? 0 : reveal.waitMs;
+          queue.shift();
+          if (reveal.rest) queue.unshift(reveal.rest);
+          const current = threadsRef.current[threadId] ?? createInitialState(threadId);
+          applyActions(threadId, eventToActions(reveal.emit, current));
+          releaseRunningIfSettled(threadId);
+          if (waitMs > 0 && queue.length > 0) {
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(() => {
+                playbackWakeRef.current.delete(threadId);
+                resolve();
+              }, waitMs);
+              playbackWakeRef.current.set(threadId, () => {
+                clearTimeout(timer);
+                playbackWakeRef.current.delete(threadId);
+                resolve();
+              });
+            });
+          }
+        }
+      } finally {
+        playbackActiveRef.current.delete(threadId);
+        if (queue.length > 0 && !cancelledRef.current.has(threadId)) pumpPlayback(threadId);
+      }
+    };
+    void step();
+  }, [applyActions, releaseRunningIfSettled]);
+
+  pumpPlaybackRef.current = pumpPlayback;
+
+  /** 收到服务端 SSE 事件：推入按拍回放队列，确保思考、过程说明、工具与总结正文平滑流式呈现。 */
   const enqueueEvent = useCallback((threadId: string, event: BaseEvent): void => {
     if (cancelledRef.current.has(threadId)) return;
-    const current = threadsRef.current[threadId] ?? createInitialState(threadId);
-    applyActions(threadId, eventToActions(event, current));
-    releaseRunningIfSettled(threadId);
-  }, [applyActions, releaseRunningIfSettled]);
+    if (event.type === EventType.RUN_STARTED) {
+      const current = threadsRef.current[threadId] ?? createInitialState(threadId);
+      applyActions(threadId, eventToActions(event, current));
+      return;
+    }
+    const queue = playbackQueuesRef.current.get(threadId) ?? [];
+    const tail = queue[queue.length - 1];
+    if (
+      tail &&
+      tail.type === event.type &&
+      (event.type === EventType.REASONING_MESSAGE_CONTENT ||
+        event.type === EventType.TEXT_MESSAGE_CONTENT) &&
+      (tail as { messageId?: string }).messageId === (event as { messageId?: string }).messageId
+    ) {
+      (tail as { delta: string }).delta =
+        String((tail as { delta?: string }).delta ?? "") +
+        String((event as { delta?: string }).delta ?? "");
+    } else {
+      queue.push(event);
+    }
+    playbackQueuesRef.current.set(threadId, queue);
+    const waitingMsgId = lookaheadWaitingRef.current.get(threadId);
+    if (waitingMsgId && hasLookaheadSignalForMessage(queue, waitingMsgId)) {
+      wakePlayback(threadId);
+    }
+    pumpPlayback(threadId);
+  }, [applyActions, pumpPlayback, wakePlayback]);
 
   /** 切换激活会话（不中断任何后台运行）。 */
   const switchActiveThread = useCallback((threadId: string): void => {
@@ -325,7 +499,7 @@ export function useAgentClient(serverUrl: string): AgentClient {
           content: trimmed,
           ...(attachments.length > 0 ? { attachments } : {}),
         },
-        { type: "startPendingAssistant", messageId: assistantMessageId, startedAt: now },
+        { type: "startPendingAssistant", messageId: assistantMessageId, startedAt: now, runId },
         {
           type: "patchRun",
           patch: { status: "running", runId, error: null, interrupts: [], progressNote: null },
@@ -622,6 +796,39 @@ export function useAgentClient(serverUrl: string): AgentClient {
       delete (globalThis as unknown as { __deepagentTestHooks?: typeof hooks }).__deepagentTestHooks;
     };
   }, [applyActions]);
+
+  // 监听浏览器标签页可见性切换：切换到后台时不被降频卡顿，切回前台时恢复正常按拍播放
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      // 唤醒所有挂起的等待定时器（立即解除当前可能被浏览器节流至 1000ms 的 setTimeout）
+      for (const wake of playbackWakeRef.current.values()) {
+        wake();
+      }
+
+      // 如果切到了后台标签页，触发快速推进冲刷
+      if (document.hidden) {
+        for (const [threadId, queue] of playbackQueuesRef.current.entries()) {
+          if (queue.length > 0) {
+            pumpPlaybackRef.current(threadId);
+          }
+        }
+      } else {
+        // 切回前台标签页时，确保有未消费队列的线程恢复推进
+        for (const [threadId, queue] of playbackQueuesRef.current.entries()) {
+          if (queue.length > 0 && !playbackActiveRef.current.has(threadId)) {
+            pumpPlaybackRef.current(threadId);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   return {
     state,

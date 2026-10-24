@@ -52,8 +52,11 @@ public sealed class MafAgentManager
         _activeCts[threadId] = linkedCts;
         var ct = linkedCts.Token;
 
-        // 解析工作区路径
-        var workspaceRoot = forwardedProps.TryGetValue("workspaceRoot", out var wsObj) && wsObj is not null && !string.IsNullOrWhiteSpace(wsObj.ToString())
+        // 解析工作区路径（默认必须是本地根目录下的 workspace 目录）
+        var workspaceRoot = forwardedProps.TryGetValue("workspaceRoot", out var wsObj) &&
+                            wsObj is not null &&
+                            !string.IsNullOrWhiteSpace(wsObj.ToString()) &&
+                            !string.Equals(wsObj.ToString(), "DIRECT_CHAT", StringComparison.OrdinalIgnoreCase)
             ? wsObj.ToString()!
             : _workspaceService.CurrentWorkspaceRoot;
 
@@ -101,7 +104,7 @@ public sealed class MafAgentManager
             fileAccess.DisableReadOnlyToolApproval = true;
         }
 
-        var fileStore = new MultiDriveFileStore(fileAccess.DefaultDrive);
+        var fileStore = new MultiDriveFileStore(fileAccess.DefaultDrive, workspaceRoot);
         fileStore.FileChanged += change =>
         {
             _ = adapter.RecordFileChangedAsync(change.Path, change.Before, change.After);
@@ -122,8 +125,9 @@ public sealed class MafAgentManager
             Directory.CreateDirectory(memoryDir);
             var memoryStore = new FileSystemAgentFileStore(memoryDir);
 
-            // 4. 工作区人格
+            // 4. 工作区人格与示例文档（供「文档子Agent」等主面板提示词开箱即用分析）
             Directory.CreateDirectory(workspaceRoot);
+            EnsureSampleWorkspaceSpreadsheet(workspaceRoot);
             var agentsMdPath = Path.Combine(workspaceRoot, "AGENTS.md");
             if (!File.Exists(agentsMdPath))
             {
@@ -166,7 +170,7 @@ public sealed class MafAgentManager
             else
             {
                 agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
-                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask"));
+                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot));
                 _agents[threadId] = agent;
             }
 
@@ -206,8 +210,19 @@ public sealed class MafAgentManager
             // 9. 执行流式调用
             await foreach (var update in agent.RunStreamingAsync(message, session, cancellationToken: ct))
             {
+                var isNonAssistantRole = update.Role is { } role && (role == ChatRole.User || role == ChatRole.System);
+                if (isNonAssistantRole)
+                {
+                    await adapter.NotifyIterationBoundaryAsync();
+                }
+
                 foreach (var content in update.Contents)
                 {
+                    if (isNonAssistantRole && content is TextContent or TextReasoningContent)
+                    {
+                        continue;
+                    }
+
                     if (content is TextContent text && !string.IsNullOrEmpty(text.Text))
                     {
                         replyText.Append(text.Text);
@@ -380,6 +395,150 @@ public sealed class MafAgentManager
         catch (Exception ex)
         {
             _logger.LogDebug("记忆沉淀跳过: {Error}", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 供微信 ClawBot (iLink 协议) 等外部 IM 通道直接调用个人 Agent 并获取完整文本回复
+    /// </summary>
+    public async Task<string> ExecuteTextPromptAsync(
+        string threadId,
+        string userText,
+        CancellationToken cancellationToken = default)
+    {
+        var runId = "wx-" + Guid.NewGuid().ToString("N")[..10];
+        var input = new RunAgentInput
+        {
+            ThreadId = threadId,
+            RunId = runId,
+            Messages =
+            [
+                new AguiMessage
+                {
+                    Id = "msg-" + Guid.NewGuid().ToString("N")[..8],
+                    Role = "user",
+                    Content = userText
+                }
+            ],
+            ForwardedProps = new Dictionary<string, object?>
+            {
+                ["permissionMode"] = "full",
+                ["workspaceRoot"] = _workspaceService.CurrentWorkspaceRoot
+            }
+        };
+
+        var replyBuilder = new System.Text.StringBuilder();
+        var processMessageIds = new HashSet<string>(StringComparer.Ordinal);
+        string? errorMsg = null;
+
+        await ExecuteAsync(
+            input,
+            chunk =>
+            {
+                // 解析 AG-UI SSE data 行中的最终总结 TEXT_MESSAGE_CONTENT delta（忽略 isProcess 中间过程消息）与 RUN_ERROR
+                foreach (var line in chunk.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var trimmed = line.Trim();
+                    if (!trimmed.StartsWith("data:", StringComparison.Ordinal)) continue;
+                    var jsonPart = trimmed["data:".Length..].Trim();
+                    if (string.IsNullOrEmpty(jsonPart)) continue;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(jsonPart);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("type", out var typeProp))
+                        {
+                            var eventType = typeProp.GetString();
+                            if (eventType == AguiEventType.TEXT_MESSAGE_START &&
+                                root.TryGetProperty("messageId", out var startIdProp) &&
+                                root.TryGetProperty("isProcess", out var isProcProp) &&
+                                isProcProp.ValueKind == JsonValueKind.True)
+                            {
+                                var msgId = startIdProp.GetString();
+                                if (!string.IsNullOrEmpty(msgId))
+                                {
+                                    processMessageIds.Add(msgId);
+                                }
+                            }
+                            else if (eventType == AguiEventType.TEXT_MESSAGE_CONTENT &&
+                                     root.TryGetProperty("delta", out var deltaProp))
+                            {
+                                var msgId = root.TryGetProperty("messageId", out var idProp) ? idProp.GetString() : null;
+                                if (msgId == null || !processMessageIds.Contains(msgId))
+                                {
+                                    replyBuilder.Append(deltaProp.GetString());
+                                }
+                            }
+                            else if (eventType == AguiEventType.RUN_ERROR &&
+                                     root.TryGetProperty("message", out var msgProp))
+                            {
+                                errorMsg = msgProp.GetString();
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // 忽略非 JSON 行
+                    }
+                }
+                return Task.CompletedTask;
+            },
+            () => Task.CompletedTask,
+            cancellationToken);
+
+        var finalReply = replyBuilder.ToString().Trim();
+        if (!string.IsNullOrEmpty(finalReply))
+        {
+            return finalReply;
+        }
+        if (!string.IsNullOrEmpty(errorMsg))
+        {
+            return $"⚠️ Agent 执行遇到问题：{errorMsg}";
+        }
+        return "我已收到您的消息并处理完成。";
+    }
+
+    private static void EnsureSampleWorkspaceSpreadsheet(string workspaceRoot)
+    {
+        try
+        {
+            var hasExcelOrPdf = Directory.EnumerateFiles(workspaceRoot, "*.xlsx", SearchOption.TopDirectoryOnly).Any()
+                                || Directory.EnumerateFiles(workspaceRoot, "*.pdf", SearchOption.TopDirectoryOnly).Any();
+            if (hasExcelOrPdf) return;
+
+            var sampleXlsxPath = Path.Combine(workspaceRoot, "project-overview.xlsx");
+            using var workbook = new ClosedXML.Excel.XLWorkbook();
+            var sheet = workbook.Worksheets.Add("项目指标与条款");
+            sheet.Cell(1, 1).Value = "编号";
+            sheet.Cell(1, 2).Value = "模块/条款名称";
+            sheet.Cell(1, 3).Value = "核心指标与配额";
+            sheet.Cell(1, 4).Value = "当前达成值";
+            sheet.Cell(1, 5).Value = "风险结论与建议";
+
+            var rows = new (string Id, string Name, string Target, string Actual, string Risk)[]
+            {
+                ("SLA-01", "AG-UI 流式首字响应延迟 (TTFT)", "<= 800 ms", "420 ms", "低风险：达标，需持续监控高峰期网关抖动"),
+                ("SLA-02", "多智能体并发任务吞吐率", ">= 50 会话/分钟", "68 会话/分钟", "低风险：并发会话隔离正常"),
+                ("SEC-01", "高影响 Shell 与文件写入审批拦截率", "100% 强制拦截或策略放行", "100%", "合规：生产环境建议保持 ask/auto 审批模式"),
+                ("MEM-01", "长期记忆单文件容量上限", "<= 64 KB / 文件", "48 KB", "中风险：接近阈值 75%，建议定期归档历史偏好记录"),
+                ("COST-01", "月度模型 Token 预算与联网搜索配额", "Token <= 5000万 / Exa <= 1000次", "Token 3820万 / Exa 860次", "高关注：Exa 搜索额度已用 86%，需控制单次 numResults <= 5")
+            };
+
+            for (var i = 0; i < rows.Length; i++)
+            {
+                var r = i + 2;
+                sheet.Cell(r, 1).Value = rows[i].Id;
+                sheet.Cell(r, 2).Value = rows[i].Name;
+                sheet.Cell(r, 3).Value = rows[i].Target;
+                sheet.Cell(r, 4).Value = rows[i].Actual;
+                sheet.Cell(r, 5).Value = rows[i].Risk;
+            }
+
+            workbook.SaveAs(sampleXlsxPath);
+        }
+        catch
+        {
+            // 忽略示例文档生成失败，不影响主流程
         }
     }
 

@@ -80,6 +80,12 @@ export function collectProcessMessageIds(queue: readonly BaseEvent[]): Set<strin
       if (typeof msgId === "string" && msgId.length > 0) {
         if (
           event.type === EventType.TEXT_MESSAGE_START &&
+          (event as { isProcess?: unknown }).isProcess === true
+        ) {
+          processIds.add(msgId);
+        }
+        if (
+          event.type === EventType.TEXT_MESSAGE_START &&
           seenTextMessageIds.length > 0 &&
           !seenTextMessageIds.includes(msgId)
         ) {

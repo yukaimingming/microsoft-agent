@@ -230,11 +230,17 @@ export function useSessions(initialThreadId: string, defaultWorkspace: string = 
           ) {
             return prev;
           }
-          const hasNewMessages = state.messages.length !== current.messageCount;
+          const lastMsg = state.messages.length > 0 ? state.messages[state.messages.length - 1] : null;
+          const lastMsgTime = lastMsg?.createdAt ?? 0;
+          const isRecentActive = state.run?.status === "running" || (lastMsgTime > 0 && (now - lastMsgTime < 10000));
+          const effectiveUpdatedAt = isRecentActive
+            ? now
+            : (current.updatedAt || lastMsgTime || current.createdAt || now);
+
           const updated: SessionSummary = {
             ...current,
             title: nextTitle,
-            updatedAt: hasNewMessages ? now : (current.updatedAt ?? now),
+            updatedAt: effectiveUpdatedAt,
             messageCount: state.messages.length,
             workspaceRoot: root,
             folderName: folder,
