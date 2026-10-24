@@ -184,12 +184,35 @@ flowchart TD
 - **Node.js 20+ / 24+**
 - **pnpm 9+ / 10+**
 - **PowerShell 7+ / Windows PowerShell**
+- **Docker 24+**（采用 Docker 部署时，无需安装以上其余环境）
 
 ---
 
 ## 6. 快速开始
 
-### 6.1 一键启动（Windows）
+### 6.1 Docker 一键部署（推荐）
+
+项目提供前后端 Dockerfile 与 `docker-compose.yml`，Nginx 统一反向代理，一键构建启动：
+
+```bash
+docker compose up -d --build
+```
+
+启动后访问：
+
+| 服务 | 地址 | 说明 |
+| :--- | :--- | :--- |
+| Web 工作台 | `http://localhost` | Nginx 托管前端静态文件，`/api`、`/agent` 等统一反代到后端 |
+| 后端直连 | `http://localhost:8788` | .NET WebAPI（健康检查 `http://localhost:8788/api/health`） |
+
+部署说明：
+
+- 容器：`maf-nginx`（前端 + 反向代理，80 端口）、`maf-backend`（后端，8788 端口）；
+- 工作区目录以卷挂载方式映射到容器内 `./workspace:/app/workspace`，配置文件挂载 `./backend/appsettings.json`（只读）；
+- 代码更新后重新执行 `docker compose up -d --build` 即可增量重建；
+- 停止服务：`docker compose down`。
+
+### 6.2 本地一键启动（Windows）
 
 双击根目录下的 `run.cmd` 或运行 `run.ps1`：
 - 自动检测环境并启动 .NET 10 WebAPI 后端服务（`http://127.0.0.1:8788`）；
@@ -200,7 +223,7 @@ flowchart TD
 run.cmd
 ```
 
-### 6.2 手动分步启动
+### 6.3 手动分步启动
 
 #### 终端 1：启动 .NET 10 WebAPI 后端
 
