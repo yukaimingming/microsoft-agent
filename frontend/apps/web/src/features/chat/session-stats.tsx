@@ -375,7 +375,7 @@ export const ContextMeter = memo(function ContextMeter({
 
   return (
     <div className="relative inline-flex items-center">
-      {/* 触发胶囊按钮 */}
+      {/* 触发按钮：仅保留环形占用率仪表圈 */}
       <button
         ref={btnRef}
         type="button"
@@ -383,10 +383,10 @@ export const ContextMeter = memo(function ContextMeter({
         title={`上下文占用 ${percent}%（${formatTokens(usedTokens)} / ${formatTokens(contextWindow)}）`}
         onClick={handleToggle}
         className={cn(
-          "context-meter-btn flex items-center gap-1.5 rounded-md px-2 py-0.5 border text-[11px] transition-colors cursor-pointer select-none whitespace-nowrap shrink-0",
+          "context-meter-btn flex items-center rounded-full p-1 transition-colors cursor-pointer select-none shrink-0",
           usage
-            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-            : "border-zinc-700/60 bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
+            ? "text-emerald-400 hover:text-emerald-300"
+            : "text-zinc-500 hover:text-zinc-300"
         )}
       >
         {/* 环形占用率仪表圈 */}
@@ -413,7 +413,6 @@ export const ContextMeter = memo(function ContextMeter({
             className={usage ? "text-emerald-400" : "text-zinc-500"}
           />
         </svg>
-        <span className="font-sans font-medium">用量 {percent > 0 ? `${percent}%` : "0%"}</span>
       </button>
 
       {/* 弹出的详细统计面板（完全还原 DeepSeek Harness 布局，通过 Portal 挂载防裁剪） */}
