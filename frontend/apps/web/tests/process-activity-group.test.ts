@@ -203,6 +203,70 @@ describe("ProcessActivityGroup 状态展示", () => {
     expect(html).toMatch(/class="[^"]*shimmer[^"]*"[^>]*>正在编辑文件 demo-notes\.txt</);
   });
 
+  it("工具仍在执行时即使上一条过程摘要已流式完毕，整组保持正在分析且工具行保持闪光", () => {
+    const html = renderToStaticMarkup(createElement(ProcessActivityGroup, {
+      items: [
+        {
+          id: "message:note",
+          kind: "assistant" as const,
+          label: "过程摘要",
+          content: "已完成的中间说明。",
+          startedAt: Date.now(),
+          streaming: false,
+        },
+        {
+          id: "tool:running",
+          kind: "activity" as const,
+          activity: {
+            id: "tool:running",
+            kind: "tool" as const,
+            status: "running" as const,
+            title: "execute",
+            startedAt: Date.now(),
+            detail: { toolName: "execute", input: { command: "ping localhost" } },
+          },
+        },
+      ],
+      isActive: true,
+      finalAnswerComplete: true,
+      finalAnswerStreaming: false,
+      runCompleted: false,
+    }));
+
+    expect(html).toContain("正在分析");
+    expect(html).not.toContain("已完成分析");
+    expect(html).toMatch(/class="[^"]*shimmer[^"]*"[^>]*>正在执行命令/);
+    expect(html).not.toMatch(/class="[^"]*shimmer[^"]*"[^>]*>执行了命令</);
+  });
+
+  it("整轮运行结束后运行中的活动收敛为静态，不再闪光", () => {
+    const html = renderToStaticMarkup(createElement(ProcessActivityGroup, {
+      items: [
+        {
+          id: "tool:running",
+          kind: "activity" as const,
+          activity: {
+            id: "tool:running",
+            kind: "tool" as const,
+            status: "running" as const,
+            title: "execute",
+            startedAt: Date.now(),
+            detail: { toolName: "execute", input: { command: "ping localhost" } },
+          },
+        },
+      ],
+      isActive: true,
+      finalAnswerComplete: false,
+      finalAnswerStreaming: false,
+      runCompleted: true,
+    }));
+
+    expect(html).toContain("已完成分析");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("正在执行命令");
+    expect(html).not.toMatch(/class="[^"]*shimmer[^"]*"/);
+  });
+
   it("只有过程说明时保持分析总线展开，工具详情仍然默认折叠", () => {
     const html = renderToStaticMarkup(createElement(ProcessActivityGroup, {
       items: [

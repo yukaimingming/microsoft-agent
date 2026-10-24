@@ -504,13 +504,18 @@ function ToolActivityRow({
   activity,
   style,
   isGroupComplete = false,
+  runCompleted = false,
 }: {
   itemId: string;
   activity: Activity;
   style: { animationDelay: string };
   isGroupComplete?: boolean;
+  runCompleted?: boolean;
 }) {
-  const shimmerActive = !isGroupComplete && isLiveActivity(activity);
+  // 执行中状态直接跟随活动自身，只在整轮运行结束后才强制收敛为静态：
+  // 即使整组时间线被提前判定完成（finalAnswerComplete 等），命令/文件工具执行期间也必须保持闪光与「正在…」文案。
+  const live = !runCompleted && isLiveActivity(activity);
+  const shimmerActive = live;
   const [open, setOpen] = useState(false);
   const name = toolName(activity);
   const summaryText = toolInputSummary(activity);
@@ -519,10 +524,10 @@ function ToolActivityRow({
   const detail = activity.detail as { truncated?: unknown } | undefined;
   const tone = activity.status === "failed"
     ? "text-[var(--color-state-error)]"
-    : (!isGroupComplete && activity.status === "waiting_approval")
+    : (live && activity.status === "waiting_approval")
       ? "text-[var(--color-state-warn)]"
       : "text-[var(--color-text-secondary)]";
-  const labelText = activityLabel(activity, isGroupComplete);
+  const labelText = activityLabel(activity, live);
   return (
     <div key={itemId} className={`process-activity-enter flex min-w-0 items-start gap-2 text-[13px] ${tone}`} style={style}>
       <ActionGlyph name={name} className="mt-0.5 size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
@@ -607,13 +612,13 @@ function ToolActivityRow({
   );
 }
 
-function activityLabel(activity: Activity, isGroupComplete = false): string {
+function activityLabel(activity: Activity, allowLive = false): string {
   const name = toolName(activity);
   const label = TOOL_ACTIONS[name] ?? `调用了 ${name}`;
-  if (!isGroupComplete && (activity.status === "running" || activity.status === "pending")) {
+  if (allowLive && (activity.status === "running" || activity.status === "pending")) {
     return ACTIVE_TOOL_ACTIONS[name] ?? `正在调用 ${name}`;
   }
-  if (!isGroupComplete && activity.status === "waiting_approval") return `等待审批：${label}`;
+  if (allowLive && activity.status === "waiting_approval") return `等待审批：${label}`;
   if (activity.status === "failed") return `${label}（失败）`;
   if (activity.status === "cancelled") return `${label}（已取消）`;
   return label;
@@ -704,10 +709,12 @@ export function ProcessActivityGroup({
   // 2. 最终答复已完成 (finalAnswerComplete)；
   // 3. 最终答复已开始流式揭示且思考过程已结束 (finalAnswerStreaming && !hasStreamingMessage)；
   // 4. 当前既非活跃态且无任何正在流式输出的思考/过程消息或运行中工具。
+  // 条件 2/3 必须同时满足「无任何运行中/待执行工具 (rawActiveCount === 0)」：
+  // 命令或文件工具还在执行时绝不能提前判完成，否则执行中的工具行会失去闪光并显示成已完成文案。
   const isComplete = Boolean(
     runCompleted ||
-    finalAnswerComplete ||
-    (finalAnswerStreaming && !hasStreamingMessage) ||
+    (finalAnswerComplete && rawActiveCount === 0) ||
+    (finalAnswerStreaming && !hasStreamingMessage && rawActiveCount === 0) ||
     (!isActive && rawActiveCount === 0 && !hasStreamingMessage)
   );
 
@@ -877,12 +884,13 @@ export function ProcessActivityGroup({
             const activity = item.activity;
             if (activity.kind === "subagent") {
               const detail = activity.detail as { name?: string; goal?: string; resultSummary?: string } | undefined;
-              const isSubagentRunning = !isComplete && (activity.status === "running" || activity.status === "pending");
-              const label = activity.status === "completed" || isComplete
-                ? "完成了子任务"
-                : activity.status === "failed"
-                  ? "子任务执行失败"
-                  : "正在执行子任务";
+              // 与工具行一致：执行中状态跟随活动自身，仅在整轮结束后才强制静态
+              const isSubagentRunning = !runCompleted && (activity.status === "running" || activity.status === "pending");
+              const label = activity.status === "failed"
+                ? "子任务执行失败"
+                : isSubagentRunning
+                  ? "正在执行子任务"
+                  : "完成了子任务";
               const description = detail?.goal ?? detail?.name ?? activity.title;
               return (
                 <div key={item.id} className="process-activity-enter text-[13px] text-[var(--color-text-secondary)]" style={staggerStyle}>
@@ -917,6 +925,7 @@ export function ProcessActivityGroup({
                 activity={activity}
                 style={staggerStyle}
                 isGroupComplete={isComplete}
+                runCompleted={runCompleted}
               />
             );
           })}
