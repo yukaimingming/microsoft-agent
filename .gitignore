@@ -1,6 +1,8 @@
 # .NET
 bin/
 obj/
+publish/
+backend/publish/
 *.user
 *.suo
 .vs/
