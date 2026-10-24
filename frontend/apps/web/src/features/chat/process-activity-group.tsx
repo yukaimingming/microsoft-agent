@@ -464,12 +464,16 @@ export function ReasoningPreview({
 function ReasoningActivity({
   item,
   isGroupComplete = false,
+  latestPending = false,
 }: {
   item: Extract<ProcessTimelineItem, { kind: "assistant" }>;
   isGroupComplete?: boolean;
+  latestPending?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const shimmerActive = Boolean(!isGroupComplete && item.streaming);
+  // 思考自身流式输出或作为时间线最新条目等待下一步时，都保持闪光
+  const shimmerActive = Boolean((!isGroupComplete && item.streaming) || latestPending);
+  const previewStreaming = shimmerActive;
 
   return (
     <details
@@ -487,7 +491,7 @@ function ReasoningActivity({
         {!open && (
           <ReasoningPreview
             content={item.content}
-            streaming={Boolean(!isGroupComplete && item.streaming)}
+            streaming={previewStreaming}
           />
         )}
         <ChevronDownIcon className="ml-auto size-3.5 shrink-0 transition-transform group-open:rotate-180" />
@@ -505,16 +509,20 @@ function ToolActivityRow({
   style,
   isGroupComplete = false,
   runCompleted = false,
+  keepLive = false,
 }: {
   itemId: string;
   activity: Activity;
   style: { animationDelay: string };
   isGroupComplete?: boolean;
   runCompleted?: boolean;
+  keepLive?: boolean;
 }) {
-  // 执行中状态直接跟随活动自身，只在整轮运行结束后才强制收敛为静态：
-  // 即使整组时间线被提前判定完成（finalAnswerComplete 等），命令/文件工具执行期间也必须保持闪光与「正在…」文案。
-  const live = !runCompleted && isLiveActivity(activity);
+  // 闪光跟随两种来源：
+  // 1. 活动自身执行中（running / pending / waiting_approval）；
+  // 2. 作为时间线最新条目且下一步还没出现——只要新一轮工具/过程还没追加，
+  //    最新一条（哪怕已完成）就保持闪光，让整个执行过程始终呈现「进行中」的状态。
+  const live = (!runCompleted && isLiveActivity(activity)) || keepLive;
   const shimmerActive = live;
   const [open, setOpen] = useState(false);
   const name = toolName(activity);
@@ -627,12 +635,15 @@ function activityLabel(activity: Activity, allowLive = false): string {
 function ProcessNoteActivity({
   item,
   isGroupComplete = false,
+  latestPending = false,
 }: {
   item: Extract<ProcessTimelineItem, { kind: "assistant" }>;
   isGroupComplete?: boolean;
+  latestPending?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const shimmerActive = Boolean(!isGroupComplete && item.streaming);
+  // 过程摘要自身流式输出或作为时间线最新条目等待下一步时，都保持闪光
+  const shimmerActive = Boolean((!isGroupComplete && item.streaming) || latestPending);
   const displayLabel = item.streaming
     ? item.label.replace(/^已完成/, "正在")
     : item.label === "已完成分析"
@@ -870,13 +881,15 @@ export function ProcessActivityGroup({
         <div className="flex flex-col gap-4 pt-4">
           {items.map((item, index) => {
             const staggerStyle = { animationDelay: `${Math.min(index, 8) * 45}ms` };
+            // 时间线最新条目在整组未完成前始终保持闪光（等待下一条工具/过程出现）
+            const latestPending = !isComplete && index === items.length - 1;
             if (item.kind === "assistant") {
               if (item.section === "reasoning") {
-                return <div key={item.id} style={staggerStyle}><ReasoningActivity item={item} isGroupComplete={isComplete} /></div>;
+                return <div key={item.id} style={staggerStyle}><ReasoningActivity item={item} isGroupComplete={isComplete} latestPending={latestPending} /></div>;
               }
               return (
                 <div key={item.id} style={staggerStyle}>
-                  <ProcessNoteActivity item={item} isGroupComplete={isComplete} />
+                  <ProcessNoteActivity item={item} isGroupComplete={isComplete} latestPending={latestPending} />
                 </div>
               );
             }
@@ -885,7 +898,7 @@ export function ProcessActivityGroup({
             if (activity.kind === "subagent") {
               const detail = activity.detail as { name?: string; goal?: string; resultSummary?: string } | undefined;
               // 与工具行一致：执行中状态跟随活动自身，仅在整轮结束后才强制静态
-              const isSubagentRunning = !runCompleted && (activity.status === "running" || activity.status === "pending");
+              const isSubagentRunning = (!runCompleted && (activity.status === "running" || activity.status === "pending")) || latestPending;
               const label = activity.status === "failed"
                 ? "子任务执行失败"
                 : isSubagentRunning
@@ -926,6 +939,7 @@ export function ProcessActivityGroup({
                 style={staggerStyle}
                 isGroupComplete={isComplete}
                 runCompleted={runCompleted}
+                keepLive={latestPending && activity.status !== "failed"}
               />
             );
           })}

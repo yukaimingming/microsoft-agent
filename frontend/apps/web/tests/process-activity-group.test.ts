@@ -267,6 +267,61 @@ describe("ProcessActivityGroup 状态展示", () => {
     expect(html).not.toMatch(/class="[^"]*shimmer[^"]*"/);
   });
 
+  it("最新一条已完成工具在下一步出现前保持闪光，出现新条目后恢复静态", () => {
+    const completedTool = {
+      id: "tool:done",
+      kind: "activity" as const,
+      activity: {
+        id: "tool:done",
+        kind: "tool" as const,
+        status: "completed" as const,
+        title: "execute",
+        startedAt: Date.now(),
+        detail: { toolName: "execute", input: { command: "ping localhost" } },
+      },
+    };
+    const items = [
+      { ...reasoningItem, id: "reasoning:done", streaming: false, content: "已完成的第一段思考" },
+      completedTool,
+    ];
+
+    // 已完成工具是最新条目且整组未完成：保持闪光等待下一步
+    const liveHtml = renderToStaticMarkup(createElement(ProcessActivityGroup, {
+      items,
+      isActive: true,
+      runCompleted: false,
+      finalAnswerStreaming: false,
+      finalAnswerComplete: false,
+    }));
+    expect(liveHtml).toMatch(/class="[^"]*shimmer[^"]*"[^>]*>执行了命令 ping localhost</);
+    expect(liveHtml).toContain("正在分析");
+
+    // 新条目（第二个工具）出现后：前一条恢复静态，只有最新条目闪光
+    const supersededHtml = renderToStaticMarkup(createElement(ProcessActivityGroup, {
+      items: [
+        ...items,
+        {
+          id: "tool:next",
+          kind: "activity" as const,
+          activity: {
+            id: "tool:next",
+            kind: "tool" as const,
+            status: "running" as const,
+            title: "read_file",
+            startedAt: Date.now(),
+            detail: { toolName: "read_file", input: { path: "README.md" } },
+          },
+        },
+      ],
+      isActive: true,
+      runCompleted: false,
+      finalAnswerStreaming: false,
+      finalAnswerComplete: false,
+    }));
+    expect(supersededHtml).not.toMatch(/class="[^"]*shimmer[^"]*"[^>]*>执行了命令 ping localhost</);
+    expect(supersededHtml).toMatch(/class="[^"]*shimmer[^"]*"[^>]*>正在分析文件 README\.md</);
+  });
+
   it("只有过程说明时保持分析总线展开，工具详情仍然默认折叠", () => {
     const html = renderToStaticMarkup(createElement(ProcessActivityGroup, {
       items: [
