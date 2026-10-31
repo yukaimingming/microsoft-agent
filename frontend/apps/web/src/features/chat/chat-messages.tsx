@@ -15,7 +15,8 @@
  * 6. 人工安全审批与纯净 Markdown 渲染。
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { StickToBottomContext } from "use-stick-to-bottom";
 import {
   Conversation,
   ConversationContent,
@@ -30,14 +31,15 @@ import {
   MessageAction,
 } from "../../components/ai-elements/message.js";
 import { ProcessActivityGroup, type ProcessTimelineItem } from "./process-activity-group.js";
+import { ConversationTurnNavigator, type ConversationTurn } from "./conversation-turn-navigator.js";
 import { DiffCard, type FileChangeSummary, type FileRevision } from "./diff-card.js";
 import { ChatAttachmentGallery, ImagePreviewDialog, type ChatAttachment } from "./chat-attachments.js";
 import { ApprovalCard } from "./approval-card.js";
+import { BloubBot } from "./bloub-bot.js";
 import {
   CopyIcon,
   CheckIcon,
   RotateCcwIcon,
-  SparklesIcon,
   ArrowRightIcon,
   PencilIcon,
   CornerDownLeftIcon,
@@ -441,6 +443,38 @@ function formatMessageTime(createdAt?: number): string {
   return `${hours}:${minutes}`;
 }
 
+/** 格式化回合完整日期时间（例如：2026年10月28日 10:12） */
+function formatTurnDateTime(createdAt?: number): string {
+  if (!createdAt || typeof createdAt !== "number" || Number.isNaN(createdAt) || createdAt <= 0) {
+    return "";
+  }
+  const d = new Date(createdAt);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${year}年${month}月${day}日 ${hours}:${minutes}`;
+}
+
+/** 清理 Markdown 语法符号，生成干净自然的回合回复摘要文本 */
+function cleanMarkdownForTurnPreview(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^[ \t]*[-*+>][ \t]+/gm, "")
+    .replace(/:?-{2,}:?/g, " ")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function ChatMessages({
   messages,
   activities,
@@ -511,15 +545,73 @@ export function ChatMessages({
     setEditingMessageId(null);
   };
 
+  // StickToBottom 上下文：给回合导航条提供真实滚动元素与解除粘底的能力
+  const stickContextRef = useRef<StickToBottomContext | null>(null);
+  const getScrollElement = useCallback(() => stickContextRef.current?.scrollRef.current ?? null, []);
+  const stopStickyScroll = useCallback(() => stickContextRef.current?.stopScroll(), []);
+
+  // 左侧回合导航条的数据：每个用户消息开启一个回合，同时聚合本轮助手回复摘要与完整日期时间
+  const turns = useMemo<ConversationTurn[]>(() => {
+    const result: ConversationTurn[] = [];
+    for (let i = 0; i < messages.length; i += 1) {
+      const msg = messages[i];
+      if (!msg || msg.role !== "user") continue;
+
+      const promptLine =
+        msg.content
+          .split(/\r?\n/)
+          .find((line) => line.trim())
+          ?.trim() ?? "(图片或文件消息)";
+
+      const turnAssistantMessages: ChatMessage[] = [];
+      for (let j = i + 1; j < messages.length; j += 1) {
+        const nextMsg = messages[j];
+        if (!nextMsg) continue;
+        if (nextMsg.role === "user") break;
+        if (nextMsg.role === "assistant") {
+          turnAssistantMessages.push(nextMsg);
+        }
+      }
+
+      const finalAssistant =
+        [...turnAssistantMessages]
+          .reverse()
+          .find((m) => !timelineOwnedMessageIds.has(m.id) && m.content.trim().length > 0) ??
+        [...turnAssistantMessages]
+          .reverse()
+          .find((m) => m.content.trim().length > 0);
+
+      let rawReply = finalAssistant?.content ?? "";
+      if (!rawReply.trim()) {
+        const anyReasoning = [...turnAssistantMessages]
+          .reverse()
+          .find((m) => Boolean(m.reasoning && m.reasoning.trim().length > 0));
+        if (anyReasoning?.reasoning) {
+          rawReply = anyReasoning.reasoning;
+        } else if (turnAssistantMessages.some((m) => m.streaming || m.reasoningStreaming)) {
+          rawReply = "正在思考与生成回复中...";
+        }
+      }
+
+      result.push({
+        id: msg.id,
+        time: formatMessageTime(msg.createdAt),
+        dateTime: formatTurnDateTime(msg.createdAt),
+        prompt: promptLine,
+        replyPreview: cleanMarkdownForTurnPreview(rawReply),
+      });
+    }
+    return result;
+  }, [messages, timelineOwnedMessageIds]);
+
   return (
-    <Conversation className="min-h-0 flex-1 bg-black">
+    <div className="relative flex min-h-0 flex-1 @container">
+      <Conversation contextRef={stickContextRef} className="min-h-0 flex-1 bg-black">
       <ConversationContent className="mx-auto w-full max-w-3xl px-0 py-8">
         {messages.length === 0 ? (
           /* 空状态引导区 */
-          <div className="flex h-full min-h-[360px] flex-col items-center justify-center text-center">
-            <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-300 shadow-inner">
-              <SparklesIcon className="size-6 text-zinc-100" />
-            </div>
+          <div className="-my-8 flex min-h-full flex-col items-center justify-center text-center">
+            <BloubBot size={88} />
             {(() => {
               const hour = new Date().getHours();
               let greetingTitle: string;
@@ -545,17 +637,17 @@ export function ChatMessages({
               }
               return (
                 <>
-                  <h2 className="mb-2 text-xl font-semibold text-zinc-100 tracking-tight">
+                  <h2 className="mb-1 text-xl font-semibold text-zinc-100 tracking-tight">
                     {greetingTitle}
                   </h2>
-                  <p className="mb-6 max-w-md text-[13.5px] text-zinc-400">
+                  <p className="mb-2 max-w-md text-[13.5px] text-zinc-400">
                     {greetingDesc}
                   </p>
                 </>
               );
             })()}
 
-            <div className="grid w-full max-w-2xl grid-cols-1 gap-2 text-left sm:grid-cols-2">
+            <div className="grid w-full max-w-2xl grid-cols-1 gap-1 text-left sm:grid-cols-2">
               {[
                 {
                   badge: "待办清单",
@@ -611,7 +703,7 @@ export function ChatMessages({
                   key={item.label}
                   type="button"
                   onClick={() => onQuickPrompt?.(item.prompt)}
-                  className="group flex flex-col justify-between gap-1 rounded-xl border border-zinc-800/80 bg-zinc-950/70 p-2.5 text-left transition-all hover:border-zinc-700 hover:bg-zinc-900/90 hover:shadow-md cursor-pointer"
+                  className="group flex flex-col justify-between gap-1 rounded-xl border border-zinc-800/80 bg-zinc-950/70 p-2 text-left transition-all hover:border-zinc-700 hover:bg-zinc-900/90 hover:shadow-md cursor-pointer"
                 >
                   <div className="flex items-center justify-between w-full">
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/60">
@@ -645,7 +737,7 @@ export function ChatMessages({
                 const isCopied = copiedId === message.id;
 
                 return (
-                  <div key={message.id} className="group/user flex flex-col items-end w-full">
+                  <div key={message.id} data-message-id={message.id} className="group/user flex flex-col items-end w-full">
                     {isEditing ? (
                       /* 内联编辑模式：与提示词输入框风格统一，重新发送按钮完全一致 */
                       <div className="w-full max-w-[85%] rounded-2xl border border-zinc-700/80 bg-zinc-900 p-3.5 shadow-xl">
@@ -792,7 +884,7 @@ export function ChatMessages({
               }
 
               return (
-                <div key={message.id} className="flex flex-col w-full text-zinc-100 space-y-3">
+                <div key={message.id} data-message-id={message.id} className="flex flex-col w-full text-zinc-100 space-y-3">
                   {/* 过程时间线固定在本轮第一条助手消息上，工具按出现顺序往下追加。 */}
                   {hasProcessSection && (
                   <ProcessActivityGroup
@@ -879,6 +971,12 @@ export function ChatMessages({
       </ConversationContent>
       <ConversationScrollButton />
       <ImagePreviewDialog file={previewAttachment} onOpenChange={(open) => { if (!open) setPreviewAttachment(null); }} />
-    </Conversation>
+      </Conversation>
+      <ConversationTurnNavigator
+        turns={turns}
+        getScrollElement={getScrollElement}
+        stopScroll={stopStickyScroll}
+      />
+    </div>
   );
 }

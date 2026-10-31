@@ -31,7 +31,7 @@ import { useProviderSettings } from "./features/settings/use-provider-settings.j
 import { useTheme } from "./features/settings/use-theme.js";
 import { useSessions, normalizePath, type SessionSummary } from "./features/chat/use-sessions.js";
 import { FolderPickerModal } from "./features/chat/folder-picker-modal.js";
-import { PanelLeftIcon, AlertCircleIcon, PanelRightIcon, SunIcon, MoonIcon, AlertTriangleIcon, SmartphoneIcon } from "lucide-react";
+import { PanelLeftIcon, AlertCircleIcon, PanelRightIcon, AlertTriangleIcon } from "lucide-react";
 import { ReviewSidebar } from "./features/review/review-sidebar.js";
 import { useGitReview } from "./features/review/use-git-review.js";
 import { useWeChatClawbot } from "./features/wechat/use-wechat-clawbot.js";
@@ -637,7 +637,7 @@ export function App() {
             </h1>
           </div>
 
-          {/* 右上角保持干净，展示微小运行中提示、黑白主题切换与代码审查(Review)边栏开关 */}
+          {/* 右上角保持干净，展示微小运行中提示与代码审查(Review)边栏开关 */}
           <div className="flex items-center gap-1.5">
             {runningThreadIds.length > 0 && (
               <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 mr-1">
@@ -649,55 +649,6 @@ export function App() {
                 </span>
               </div>
             )}
-
-            {/* 顶部状态栏同步展示个人助手 ClawBot 连接状态（点击亦可直接打开二维码弹窗） */}
-            <button
-              type="button"
-              data-testid="header-wechat-clawbot-btn"
-              onClick={() => setWechatModalOpen(true)}
-              title={
-                wechat.connection.connected
-                  ? "个人助手 ClawBot 已连接 (iLink 协议在线)"
-                  : "点击扫码连接个人微信 ClawBot"
-              }
-              className={`flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-colors border mr-1 ${
-                wechat.connection.connected
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-                  : wechat.scanStatus === "scaned"
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                    : "border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              }`}
-            >
-              <span
-                className={`size-1.5 shrink-0 rounded-full ${
-                  wechat.connection.connected
-                    ? "bg-emerald-400 animate-pulse"
-                    : wechat.scanStatus === "scaned"
-                      ? "bg-amber-400 animate-ping"
-                      : "bg-zinc-500"
-                }`}
-              />
-              <SmartphoneIcon className="size-3.5 shrink-0" />
-              <span>
-                个人助手 ClawBot：{wechat.connection.connected ? "已连接" : wechat.scanStatus === "scaned" ? "待确认" : "未连接"}
-              </span>
-            </button>
-
-            {/* 一键切换黑白主题按钮（☀️ 浅色 / 🌙 深色） */}
-            <button
-              type="button"
-              data-testid="header-toggle-theme-btn"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              title={theme === "dark" ? "切换为浅色主题 (Light)" : "切换为深色主题 (Dark)"}
-              aria-label="切换黑白主题"
-              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
-            >
-              {theme === "dark" ? (
-                <SunIcon className="size-4 text-amber-400" />
-              ) : (
-                <MoonIcon className="size-4 text-indigo-400" />
-              )}
-            </button>
 
             <button
               type="button"

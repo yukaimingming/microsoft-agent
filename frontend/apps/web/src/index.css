@@ -1032,3 +1032,55 @@ html.light .animated-gradient-text {
     animation: none;
   }
 }
+
+/* ================= 左侧上下文时间线与悬停预览框（深浅色主题适配） ================= */
+.turn-navigator-preview-card {
+  background-color: #1c1c1f !important;
+  border: 1px solid rgba(63, 63, 70, 0.75) !important;
+  color: #f4f4f5 !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+.turn-navigator-preview-card .turn-preview-title {
+  color: #f4f4f5 !important;
+}
+.turn-navigator-preview-card .turn-preview-body {
+  color: #a1a1aa !important;
+}
+.turn-navigator-preview-card .turn-preview-footer,
+.turn-navigator-preview-card .turn-preview-footer span {
+  color: #71717a !important;
+}
+
+html.light .turn-navigator-preview-card {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.12), 0 4px 10px -2px rgba(15, 23, 42, 0.06) !important;
+}
+html.light .turn-navigator-preview-card .turn-preview-title {
+  color: #0f172a !important;
+}
+html.light .turn-navigator-preview-card .turn-preview-body {
+  color: #475569 !important;
+}
+html.light .turn-navigator-preview-card .turn-preview-footer,
+html.light .turn-navigator-preview-card .turn-preview-footer span {
+  color: #94a3b8 !important;
+}
+
+/* 左侧时间线横条刻度深浅色适配 */
+.turn-navigator-tick {
+  background-color: #52525b;
+}
+button[aria-current="location"] .turn-navigator-tick,
+.group\/nav-item:hover .turn-navigator-tick {
+  background-color: #f4f4f5;
+}
+html.light .turn-navigator-tick {
+  background-color: #cbd5e1 !important;
+}
+html.light button[aria-current="location"] .turn-navigator-tick,
+html.light .group\/nav-item:hover .turn-navigator-tick {
+  background-color: #1e293b !important;
+}
+

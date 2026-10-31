@@ -533,10 +533,12 @@ function ChatInputContent({
   return (
     <div className="shrink-0 bg-white dark:bg-black px-4 py-4 transition-colors">
       <div className="mx-auto w-full max-w-3xl">
-        {/* 输入框顶部附加栏：工作区选择器与待办任务列表独立分开展示 */}
+        {/* 输入框顶部附加栏：工作区选择器（仅在尚未发送消息的新对话中显示）与待办任务列表独立分开展示 */}
+        {(messages.length === 0 || Boolean(todoActivity)) && (
         <div className="flex w-full items-center justify-between gap-2 px-1 mb-2">
-          {/* 左侧：工作区选择器保持在左侧 */}
+          {/* 左侧：工作区选择器保持在左侧（发出消息有内容后隐藏，仅新建对话时可选择） */}
           <div className="flex items-center gap-2">
+            {messages.length === 0 && (
             <div className="relative flex w-fit shrink-0 items-center" ref={workspaceDropdownRef}>
               <button
                 type="button"
@@ -636,6 +638,7 @@ function ChatInputContent({
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* 右侧：任务 Todo 列表平行在右侧独立展示（展开详情为绝对定位浮层，互不影响） */}
@@ -656,6 +659,7 @@ function ChatInputContent({
             </div>
           ) : null}
         </div>
+        )}
 
         {/* 输入框与背面折叠排队卡片组合层（背面折叠卡片仅在输入框上方露出，杜绝任何尖角） */}
         <div className="relative w-full">
