@@ -23,7 +23,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [1/2] 启动 .NET 10 后端服务 (http://127.0.0.1:8788)...
-start "MAF-Harness-Backend" cmd /c "cd /d "%~dp0backend" && dotnet run"
+start "MAF-Harness-Backend" cmd /c "cd /d "%~dp0backend" && set ASPNETCORE_URLS=http://127.0.0.1:8788 && dotnet run"
 
 echo 等待后端初始化就绪...
 timeout /t 3 /nobreak >nul

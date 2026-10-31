@@ -173,13 +173,19 @@ function findCurrentAssistantIndex(
   runId?: string,
   messageId?: string,
 ): number {
+  // 绝不跨越已经发生的后续节点或工具调用往前合并（对齐 agentscope-harness）：
+  // 只允许绑定到最后一条用户消息之后的空助手消息，且 runId 必须匹配，
+  // 否则正文会「乱跳」到更早的消息节点上。
+  const lastUserIndex = messages.findLastIndex((m) => m.role === "user");
   if (messageId) {
     const byId = messages.findIndex((m) => m.id === messageId);
     if (
       byId !== -1 &&
+      byId > lastUserIndex &&
       messages[byId]?.role === "assistant" &&
       !messages[byId]?.content &&
-      !messages[byId]?.isProcess
+      !messages[byId]?.isProcess &&
+      (!runId || !messages[byId]?.runId || messages[byId]?.runId === runId)
     ) {
       return byId;
     }
@@ -187,6 +193,7 @@ function findCurrentAssistantIndex(
   const lastMessage = messages.at(-1);
   if (
     lastMessage?.role === "assistant" &&
+    messages.length - 1 > lastUserIndex &&
     !lastMessage.content &&
     !lastMessage.isProcess &&
     (!runId || !lastMessage.runId || lastMessage.runId === runId)
@@ -811,6 +818,8 @@ export function buildRunParameters(
     workspaceRoot?: string;
     /** 本次运行采用的权限审批模式。 */
     permissionMode?: PermissionMode;
+    /** 本次运行是否启用联网搜索工具；未开启时模型仅凭自身知识回答。 */
+    webSearch?: boolean;
   },
   resume?: Array<{ interruptId: string; status: "resolved" | "cancelled"; payload?: unknown }>,
 ): RunAgentParameters {
@@ -827,6 +836,7 @@ export function buildRunParameters(
       effort: options.effort,
       workspaceRoot: options.workspaceRoot,
       permissionMode: options.permissionMode ?? DEFAULT_PERMISSION_MODE,
+      webSearch: options.webSearch ?? false,
     },
     ...(resume && resume.length > 0 ? { resume } : {}),
   };

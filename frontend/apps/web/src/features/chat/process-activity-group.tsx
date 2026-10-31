@@ -4,6 +4,7 @@ import { cn } from "../../lib/utils.js";
 import {
   BrainCircuitIcon,
   CheckCircle2Icon,
+  ChevronRightIcon,
   ChevronDownIcon,
   ExternalLinkIcon,
   FileSearchIcon,
@@ -371,96 +372,69 @@ function StreamingText({ content, streaming }: { content: string; streaming?: bo
   );
 }
 
-export function ReasoningPreview({
-  content,
-  streaming = false,
-}: {
-  content: string;
-  streaming?: boolean;
-}) {
-  const preview = useMemo(() => formatReasoningPreview(content), [content]);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollPosRef = useRef(0);
+/**
+ * 思考流式预览（对齐 ZCode ReasoningTrigger / agentscope-harness）：
+ * 折叠时取最后一个非空行做单行展示，尾部始终贴右（scrollLeft = scrollWidth），
+ * 仅在溢出时显示两侧渐隐遮罩；由 ResizeObserver 驱动，不用 rAF 跑马灯。
+ * 非流式状态立即停止滚动，不再展示预览。
+ */
+function ReasoningRollPreview({ text, shimmer }: { text: string; shimmer?: boolean }) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflow, setOverflow] = useState(false);
+
+  const lastLine = useMemo(() => {
+    const lines = text.split(/\r?\n/);
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const trimmed = lines[i]?.trim();
+      if (trimmed) return trimmed;
+    }
+    return "";
+  }, [text]);
 
   useEffect(() => {
-    if (!streaming) {
-      scrollPosRef.current = 0;
-      if (containerRef.current) {
-        containerRef.current.scrollLeft = 0;
-      }
-      return;
-    }
-
-    let animId: number;
-    let lastTime = performance.now();
-    const speed = 36; // 36px/s 为清晰易读的滚动速度
-
-    const step = (now: number) => {
-      const dt = Math.min((now - lastTime) / 1000, 0.1);
-      lastTime = now;
-
-      const el = containerRef.current;
-      if (el) {
-        const maxScroll = el.scrollWidth - el.clientWidth;
-        if (maxScroll > 1) {
-          scrollPosRef.current += speed * dt;
-          // 滚至尾部留有微小间隔后平滑循环
-          if (scrollPosRef.current > maxScroll + 48) {
-            scrollPosRef.current = 0;
-          }
-          el.scrollLeft = scrollPosRef.current;
-        } else {
-          scrollPosRef.current = 0;
-          el.scrollLeft = 0;
-        }
-      }
-
-      animId = requestAnimationFrame(step);
+    const container = containerRef.current;
+    const inner = textRef.current;
+    if (!container || !inner) return;
+    const update = () => {
+      const over = inner.scrollWidth > container.clientWidth + 1;
+      setOverflow((prev) => (prev === over ? prev : over));
+      // 仅流式时尾部贴右；结束后复位到左侧静态展示
+      container.scrollLeft = shimmer ? container.scrollWidth : 0;
     };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, [lastLine, shimmer]);
 
-    animId = requestAnimationFrame(step);
-    return () => {
-      cancelAnimationFrame(animId);
-      if (containerRef.current) {
-        containerRef.current.scrollLeft = 0;
-      }
-    };
-  }, [streaming]);
+  if (!lastLine) return null;
 
-  if (!preview) return null;
-
-  // 输出完毕或非流式状态：立即结束滚动，恢复为平静的单行截断文本
-  if (!streaming) {
-    return (
-      <span
-        className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-muted)]"
-        title={preview}
-      >
-        {preview}
-      </span>
-    );
-  }
-
-  // 流式输出中：从后往前平滑滚动显示，两侧添加渐隐遮罩
+  const mask = "linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)";
   return (
-    <div
+    <span
       ref={containerRef}
-      className="relative min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[var(--color-text-muted)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      style={{
-        maskImage:
-          "linear-gradient(to right, transparent 0, black 8px, black calc(100% - 12px), transparent 100%)",
-        WebkitMaskImage:
-          "linear-gradient(to right, transparent 0, black 8px, black calc(100% - 12px), transparent 100%)",
-      }}
-      title={preview}
+      className="inline-block min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] leading-[18px] text-[var(--color-text-muted)]"
+      style={overflow ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
     >
-      <span className="inline-block select-none shimmer shimmer-color-blue-500/60 font-medium">
-        {preview}
+      <span
+        ref={textRef}
+        className={cn("inline-block min-w-max select-none", shimmer && "shimmer shimmer-color-blue-500/60 text-foreground font-medium")}
+      >
+        {lastLine}
       </span>
-    </div>
+    </span>
   );
 }
 
+/**
+ * 思考活动行（时间线内，ZCode 式折叠 + 滚动预览）：
+ * 流式中标签用渐变流光「正在思考」+ 末行滚动预览；
+ * 完成后定格为「思考 · 持续了 N 秒」且不再显示预览；空流式内容不渲染。
+ * latestPending：作为时间线最新条目等待下一步时保持流光。
+ */
 function ReasoningActivity({
   item,
   isGroupComplete = false,
@@ -471,35 +445,79 @@ function ReasoningActivity({
   latestPending?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // 思考自身流式输出或作为时间线最新条目等待下一步时，都保持闪光
-  const shimmerActive = Boolean((!isGroupComplete && item.streaming) || latestPending);
-  const previewStreaming = shimmerActive;
+  const streaming = Boolean(item.streaming);
+  // 思考自身流式输出或作为时间线最新条目等待下一步时，都保持流光
+  const shimmerActive = Boolean((!isGroupComplete && streaming) || latestPending);
+  const durationSeconds = item.reasoningDuration !== undefined && item.reasoningDuration > 0
+    ? Math.max(1, Math.ceil(item.reasoningDuration))
+    : undefined;
+
+  // 空流式内容不渲染预览行，但保留标签行
+  if (streaming && !item.content.trim()) {
+    return (
+      <div className="process-activity-enter group/reasoning">
+        <details
+          className="group"
+          open={open}
+          onToggle={(event) => setOpen(event.currentTarget.open)}
+        >
+          <summary className="flex w-full cursor-pointer list-none items-center gap-2 text-[13px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
+            <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
+            <span className="animated-gradient-text shrink-0 font-medium">正在思考</span>
+            <ChevronRightIcon
+              className={cn(
+                "ml-auto size-4 shrink-0 text-[var(--color-text-muted)] transition-all",
+                open ? "rotate-90 opacity-100" : "rotate-0 opacity-0 group-hover/reasoning:opacity-60",
+              )}
+            />
+          </summary>
+        </details>
+      </div>
+    );
+  }
 
   return (
-    <details
-      className="process-activity-enter group"
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="flex w-full cursor-pointer list-none items-center gap-2 text-[13px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
-        <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
-        {shimmerActive ? (
-          <span className="shimmer shimmer-color-blue-500/60 shrink-0 font-medium inline-block">思考</span>
-        ) : (
-          <span className="shrink-0">思考</span>
-        )}
-        {!open && (
-          <ReasoningPreview
-            content={item.content}
-            streaming={previewStreaming}
+    <div className="process-activity-enter group/reasoning">
+      <details
+        className="group"
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
+        <summary className="flex w-full cursor-pointer list-none items-center gap-2 text-[13px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
+          <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
+          {shimmerActive ? (
+            <span className="animated-gradient-text shrink-0 font-medium">正在思考</span>
+          ) : (
+            <span className="inline-flex shrink-0 items-center gap-2 text-[var(--color-text-secondary)]">
+              <span className="shrink-0 font-medium">思考</span>
+              {durationSeconds !== undefined && (
+                <>
+                  <span className="text-[var(--color-text-muted)]">·</span>
+                  <span className="font-normal text-[var(--color-text-muted)]">持续了 {durationSeconds} 秒</span>
+                </>
+              )}
+            </span>
+          )}
+          {!open && streaming && Boolean(item.content.trim()) && (
+            <>
+              <span className="text-[var(--color-text-muted)]">·</span>
+              <ReasoningRollPreview text={item.content} shimmer={shimmerActive} />
+            </>
+          )}
+          <ChevronRightIcon
+            className={cn(
+              "ml-auto size-4 shrink-0 text-[var(--color-text-muted)] transition-all",
+              open ? "rotate-90 opacity-100" : "rotate-0 opacity-0 group-hover/reasoning:opacity-60",
+            )}
           />
+        </summary>
+        {open && (
+          <div className="ml-[26px] mt-1.5 break-words border-l border-[var(--color-border-subtle)] pl-3 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
+            <StreamingText content={item.content} streaming={item.streaming} />
+          </div>
         )}
-        <ChevronDownIcon className="ml-auto size-3.5 shrink-0 transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="ml-[26px] mt-1.5 break-words border-l border-[var(--color-border-subtle)] pl-3 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-        <StreamingText content={item.content} streaming={item.streaming} />
-      </div>
-    </details>
+      </details>
+    </div>
   );
 }
 
@@ -544,7 +562,7 @@ function ToolActivityRow({
           <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 [&::-webkit-details-marker]:hidden">
             {shimmerActive ? (
               // 运行中的工具行：动作文案与路径/命令参数合并成一整行微光，避免只有开头几个字在闪。
-              <span className="shimmer shimmer-color-blue-500/60 font-medium inline-block">
+              <span className="shimmer shimmer-color-blue-500/60 text-foreground font-medium inline-block">
                 {summaryText ? `${labelText} ${summaryText}` : labelText}
               </span>
             ) : (
@@ -665,7 +683,7 @@ function ProcessNoteActivity({
           <CheckCircle2Icon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
         )}
         {shimmerActive ? (
-          <span className="shimmer shimmer-color-blue-500/60 shrink-0 font-medium inline-block">
+          <span className="shimmer shimmer-color-blue-500/60 text-foreground shrink-0 font-medium inline-block">
             {displayLabel}
           </span>
         ) : (
@@ -675,7 +693,7 @@ function ProcessNoteActivity({
           <span
             className={cn(
               "min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-muted)]",
-              shimmerActive && "shimmer shimmer-color-blue-500/60 font-medium inline-block"
+              shimmerActive && "shimmer shimmer-color-blue-500/60 text-foreground font-medium inline-block"
             )}
           >
             {singleLinePreview}
@@ -688,7 +706,7 @@ function ProcessNoteActivity({
           <p
             className={cn(
               "whitespace-pre-wrap",
-              shimmerActive && "streaming-caret shimmer shimmer-color-blue-500/60"
+              shimmerActive && "streaming-caret shimmer shimmer-color-blue-500/60 text-foreground"
             )}
           >
             {cleanedContent}
@@ -910,13 +928,13 @@ export function ProcessActivityGroup({
                   <div className="flex items-center gap-2.5">
                     <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
                     {isSubagentRunning ? (
-                      <span className="shimmer shimmer-color-blue-500/60 font-medium inline-block">{label}</span>
+                      <span className="shimmer shimmer-color-blue-500/60 text-foreground font-medium inline-block">{label}</span>
                     ) : (
                       <span>{label}</span>
                     )}
                     {description && (
                       isSubagentRunning ? (
-                        <span className="shimmer shimmer-color-blue-500/60 truncate inline-block">{description}</span>
+                        <span className="shimmer shimmer-color-blue-500/60 text-foreground truncate inline-block">{description}</span>
                       ) : (
                         <span className="truncate">{description}</span>
                       )

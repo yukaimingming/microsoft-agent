@@ -152,7 +152,7 @@ export function ReviewDiffView({
       )}
 
       {/* 单个文件的标题条 */}
-      <div className="flex shrink-0 items-center justify-between border-b border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-xs">
+      <div className="flex shrink-0 items-center justify-between border-b border-border/80 bg-zinc-950/80 px-3 py-2 text-xs">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
@@ -193,7 +193,7 @@ export function ReviewDiffView({
           {!file.isImage && (addCount > 0 || delCount > 0) && (
             <div className="flex items-center gap-1 font-mono text-[10px] pl-1">
               {addCount > 0 && <span className="text-emerald-400">+{addCount}</span>}
-              {delCount > 0 && <span className="text-rose-400">-{delCount}</span>}
+              {delCount > 0 && <span className="text-red-400">-{delCount}</span>}
             </div>
           )}
         </div>
@@ -249,7 +249,7 @@ export function ReviewDiffView({
                       className="max-h-72 object-contain rounded border border-zinc-800"
                     />
                   ) : (
-                    <div className="flex h-48 w-full items-center justify-center rounded border border-dashed border-zinc-800/80 bg-zinc-900/30 text-xs text-zinc-500">
+                    <div className="flex h-48 w-full items-center justify-center rounded border border-dashed border-border/80 bg-zinc-900/30 text-xs text-zinc-500">
                       (Not available)
                     </div>
                   )}
@@ -267,7 +267,7 @@ export function ReviewDiffView({
                       className="max-h-72 object-contain rounded border border-zinc-800"
                     />
                   ) : (
-                    <div className="flex h-48 w-full items-center justify-center rounded border border-dashed border-zinc-800/80 bg-zinc-900/30 text-xs text-zinc-500">
+                    <div className="flex h-48 w-full items-center justify-center rounded border border-dashed border-border/80 bg-zinc-900/30 text-xs text-zinc-500">
                       (File deleted)
                     </div>
                   )}
@@ -276,7 +276,7 @@ export function ReviewDiffView({
             </div>
           ) : (
             /* 代码 / 文本统一 Diff 模式 */
-            <div className="overflow-x-auto rounded border border-zinc-800/80 bg-zinc-950">
+            <div className="overflow-x-auto rounded border border-border/80 bg-zinc-950">
               {diffLines.length === 0 ? (
                 fallbackContent ? (
                   <div className="min-w-max text-[11.5px] leading-relaxed">
@@ -284,7 +284,7 @@ export function ReviewDiffView({
                       文件完整内容预览（共 {fallbackContent.split("\n").length} 行）
                     </div>
                     {fallbackContent.split("\n").map((line, idx) => (
-                      <div key={idx} className="flex items-start hover:bg-zinc-800/40 text-emerald-300 bg-emerald-950/20">
+                      <div key={idx} className="flex items-start hover:bg-accent/40 text-[var(--color-diff-add)] bg-emerald-500/10">
                         <span className="w-10 shrink-0 text-right pr-2 text-zinc-600 select-none border-r border-zinc-800 text-[10px]">
                           {idx + 1}
                         </span>
@@ -307,7 +307,7 @@ export function ReviewDiffView({
                       return (
                         <div
                           key={idx}
-                          className="bg-indigo-950/30 px-3 py-0.5 text-indigo-400 select-none border-y border-indigo-900/40"
+                          className="bg-blue-500/10 px-3 py-0.5 text-blue-400 select-none border-y border-blue-500/20"
                         >
                           {line.text}
                         </div>
@@ -315,7 +315,7 @@ export function ReviewDiffView({
                     }
                     if (line.type === "meta") {
                       return (
-                        <div key={idx} className="text-zinc-600 px-3 py-0.5 select-none text-[10px]">
+                        <div key={idx} className="text-muted-foreground px-3 py-0.5 select-none text-[10px]">
                           {line.text}
                         </div>
                       );
@@ -326,12 +326,12 @@ export function ReviewDiffView({
                     return (
                       <div
                         key={idx}
-                        className={`flex items-start hover:bg-zinc-800/40 ${
+                        className={`flex items-start hover:bg-accent/40 ${
                           isAdd
-                            ? "bg-emerald-950/30 text-emerald-300"
+                            ? "bg-emerald-500/10 text-[var(--color-diff-add)]"
                             : isDel
-                              ? "bg-rose-950/30 text-rose-300"
-                              : "text-zinc-300"
+                              ? "bg-red-500/10 text-[var(--color-diff-delete)]"
+                              : "text-[var(--color-diff-context)]"
                         }`}
                       >
                         {/* 左行号 */}

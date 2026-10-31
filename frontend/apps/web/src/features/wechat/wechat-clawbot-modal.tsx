@@ -75,7 +75,7 @@ export function WeChatClawbotModal({
                 ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
                 : scanStatus === "error" || scanStatus === "expired"
                   ? "border-red-500/30 bg-red-500/10 text-red-300"
-                  : "border-zinc-800 bg-zinc-900/70 text-zinc-200"
+                  : "border-border bg-secondary/50 text-foreground"
           }`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -122,7 +122,7 @@ export function WeChatClawbotModal({
             className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${
               isConnected
                 ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-300"
-                : "border-zinc-700 bg-zinc-800 text-zinc-300"
+                : "border-border bg-secondary text-foreground/90"
             }`}
           >
             {isConnected ? "iLink 已连接" : "iLink 未连接"}
@@ -133,54 +133,54 @@ export function WeChatClawbotModal({
         {isConnected && !showRescanQr ? (
           <div
             data-testid="wechat-connected-panel"
-            className="flex flex-col gap-3.5 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4"
+            className="flex flex-col gap-3.5 rounded-xl border border-border bg-secondary/30 p-4"
           >
             <div className="flex items-center gap-3">
               <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
                 <CheckCircle2Icon className="size-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-[14px] font-semibold text-zinc-100">
+                <h3 className="text-[14px] font-semibold text-foreground">
                   微信个人助手 ClawBot 已成功连接个人 Agent
                 </h3>
-                <p className="text-[12px] text-zinc-400 mt-0.5">
+                <p className="text-[12px] text-muted-foreground mt-0.5">
                   现在您可以直接在手机微信中向 ClawBot 发送消息，个人 Agent 将实时为您处理任务并回复。
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5 pt-1 text-[12px]">
-              <div className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2">
-                <div className="text-zinc-500 text-[11px]">iLink Bot ID</div>
-                <div className="font-mono text-zinc-200 truncate mt-0.5" title={connection.ilink_bot_id || "-"}>
+              <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
+                <div className="text-muted-foreground text-[11px]">iLink Bot ID</div>
+                <div className="font-mono text-foreground truncate mt-0.5" title={connection.ilink_bot_id || "-"}>
                   {connection.ilink_bot_id || "已授权"}
                 </div>
               </div>
-              <div className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2">
-                <div className="text-zinc-500 text-[11px]">绑定微信用户 ID</div>
-                <div className="font-mono text-zinc-200 truncate mt-0.5" title={connection.ilink_user_id || "等待首条消息同步"}>
+              <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
+                <div className="text-muted-foreground text-[11px]">绑定微信用户 ID</div>
+                <div className="font-mono text-foreground truncate mt-0.5" title={connection.ilink_user_id || "等待首条消息同步"}>
                   {connection.ilink_user_id || "已绑定个人微信"}
                 </div>
               </div>
-              <div className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2">
-                <div className="text-zinc-500 text-[11px]">长轮询通道状态 (getupdates)</div>
+              <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
+                <div className="text-muted-foreground text-[11px]">长轮询通道状态 (getupdates)</div>
                 <div className="flex items-center gap-1.5 text-emerald-400 font-medium mt-0.5">
                   <RadioIcon className="size-3.5 animate-pulse" />
                   <span>{connection.longpoll_active ? "实时监听中" : "已就绪"}</span>
                 </div>
               </div>
-              <div className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2">
-                <div className="text-zinc-500 text-[11px]">已处理微信消息数</div>
-                <div className="font-mono text-zinc-200 mt-0.5">{connection.message_count} 条</div>
+              <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
+                <div className="text-muted-foreground text-[11px]">已处理微信消息数</div>
+                <div className="font-mono text-foreground mt-0.5">{connection.message_count} 条</div>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800/60">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
               <button
                 type="button"
                 data-testid="wechat-show-qrcode-btn"
                 onClick={() => void handleSwitchToQr()}
-                className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-3 py-1.5 text-[12px] font-medium text-zinc-200 hover:bg-zinc-700 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-input bg-transparent px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               >
                 <QrCodeIcon className="size-3.5" />
                 <span>重新扫码 / 显示二维码</span>
@@ -190,7 +190,7 @@ export function WeChatClawbotModal({
                 data-testid="wechat-reset-channel-btn"
                 disabled={resetting}
                 onClick={() => void onResetChannel(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[12px] font-medium text-red-300 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[12px] font-medium text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
               >
                 <UnplugIcon className="size-3.5" />
                 <span>{resetting ? "正在重置..." : "断开并重置通道"}</span>
@@ -200,7 +200,7 @@ export function WeChatClawbotModal({
         ) : (
           <div
             data-testid="wechat-qrcode-panel"
-            className="flex flex-col items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900/40 px-6 py-5"
+            className="flex flex-col items-center justify-center rounded-xl border border-border bg-secondary/30 px-6 py-5"
           >
             {/* 二维码白色卡片容器 */}
             <div className="relative flex size-[236px] items-center justify-center rounded-2xl bg-white p-3 shadow-xl ring-1 ring-emerald-500/20">
@@ -231,7 +231,7 @@ export function WeChatClawbotModal({
                 >
                   <CheckCircle2Icon className="size-10 text-emerald-400 mb-2 animate-bounce" />
                   <div className="text-[13.5px] font-semibold">扫码成功</div>
-                  <div className="text-[11.5px] text-zinc-300 mt-1">
+                  <div className="text-[11.5px] text-foreground/90 mt-1">
                     请在手机微信上点击「确认」以授权连接个人 Agent
                   </div>
                 </div>
@@ -248,7 +248,7 @@ export function WeChatClawbotModal({
                     {scanStatus === "expired" ? "二维码已过期" : "获取二维码失败"}
                   </div>
                   {errorMessage && (
-                    <div className="text-[11px] text-zinc-300 mt-1 line-clamp-2">{errorMessage}</div>
+                    <div className="text-[11px] text-foreground/90 mt-1 line-clamp-2">{errorMessage}</div>
                   )}
                   <button
                     type="button"
@@ -264,11 +264,11 @@ export function WeChatClawbotModal({
 
             {/* 扫码提示与刷新按钮 */}
             <div className="mt-4 flex flex-col items-center text-center">
-              <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-zinc-100">
+              <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-foreground">
                 <SmartphoneIcon className="size-4 text-emerald-400" />
                 <span>请使用微信「扫一扫」绑定个人助手 ClawBot</span>
               </div>
-              <p className="mt-1 text-[12px] text-zinc-400 max-w-md">
+              <p className="mt-1 text-[12px] text-muted-foreground max-w-md">
                 基于腾讯微信 <code className="text-emerald-400 font-mono">iLink Bot</code> 协议直连，无需公网 IP 或反向代理，扫码确认后即可通过个人微信远程对话操控此 Agent。
               </p>
 
@@ -278,7 +278,7 @@ export function WeChatClawbotModal({
                   data-testid="wechat-refresh-qrcode-btn"
                   disabled={scanStatus === "loading"}
                   onClick={() => void onFetchQrCode()}
-                  className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/90 px-3 py-1.5 text-[12px] text-zinc-200 hover:bg-zinc-700 hover:text-white transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg border border-input bg-transparent px-3 py-1.5 text-[12px] text-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50"
                 >
                   <RefreshCwIcon className={`size-3.5 ${scanStatus === "loading" ? "animate-spin" : ""}`} />
                   <span>刷新二维码</span>
@@ -288,7 +288,7 @@ export function WeChatClawbotModal({
                   <button
                     type="button"
                     onClick={() => setShowRescanQr(false)}
-                    className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-[12px] text-zinc-400 hover:text-zinc-200"
+                    className="rounded-lg border border-border bg-transparent px-3 py-1.5 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                   >
                     返回已连接状态
                   </button>
@@ -299,37 +299,37 @@ export function WeChatClawbotModal({
         )}
 
         {/* 底部协议信息与操作流程说明 */}
-        <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-3 text-[11.5px] text-zinc-400 space-y-1.5">
-          <div className="flex items-center justify-between text-zinc-300 font-medium">
+        <div className="rounded-xl border border-border bg-background/40 px-4 py-3 text-[11.5px] text-muted-foreground space-y-1.5">
+          <div className="flex items-center justify-between text-foreground/90 font-medium">
             <span className="flex items-center gap-1.5">
               <ShieldCheckIcon className="size-3.5 text-emerald-400" />
               <span>iLink 协议接口规范</span>
             </span>
-            <span className="font-mono text-[11px] text-zinc-500">
+            <span className="font-mono text-[11px] text-muted-foreground">
               {connection.baseurl || "https://ilinkai.weixin.qq.com"}
             </span>
           </div>
-          <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-zinc-400">
-            <div className="rounded-lg bg-zinc-900/70 px-2.5 py-1.5 border border-zinc-800/60">
+          <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-muted-foreground">
+            <div className="rounded-lg bg-secondary/50 px-2.5 py-1.5 border border-border/60">
               <span className="text-emerald-400 font-semibold">1. 获取二维码</span>
-              <div className="text-zinc-500 truncate mt-0.5 font-mono text-[10px]">/api/v1/wechat/qrcode</div>
+              <div className="text-muted-foreground truncate mt-0.5 font-mono text-[10px]">/api/v1/wechat/qrcode</div>
             </div>
-            <div className="rounded-lg bg-zinc-900/70 px-2.5 py-1.5 border border-zinc-800/60">
+            <div className="rounded-lg bg-secondary/50 px-2.5 py-1.5 border border-border/60">
               <span className="text-emerald-400 font-semibold">2. 状态长轮询</span>
-              <div className="text-zinc-500 truncate mt-0.5 font-mono text-[10px]">/api/v1/wechat/qrcode/status</div>
+              <div className="text-muted-foreground truncate mt-0.5 font-mono text-[10px]">/api/v1/wechat/qrcode/status</div>
             </div>
-            <div className="rounded-lg bg-zinc-900/70 px-2.5 py-1.5 border border-zinc-800/60">
+            <div className="rounded-lg bg-secondary/50 px-2.5 py-1.5 border border-border/60">
               <span className="text-emerald-400 font-semibold">3. 消息收发同步</span>
-              <div className="text-zinc-500 truncate mt-0.5 font-mono text-[10px]">getupdates / sendmessage</div>
+              <div className="text-muted-foreground truncate mt-0.5 font-mono text-[10px]">getupdates / sendmessage</div>
             </div>
           </div>
           {qrData?.qrcode && (
-            <div className="pt-1 flex items-center justify-between text-[11px] text-zinc-500 border-t border-zinc-800/50">
+            <div className="pt-1 flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/60">
               <span className="flex items-center gap-1">
                 <SparklesIcon className="size-3 text-emerald-500" />
                 <span>当前会话 Token:</span>
               </span>
-              <code className="font-mono text-zinc-400">{qrData.qrcode}</code>
+              <code className="font-mono text-muted-foreground">{qrData.qrcode}</code>
             </div>
           )}
         </div>

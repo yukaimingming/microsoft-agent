@@ -44,6 +44,7 @@ import {
   usePromptInputAttachments,
   usePromptInputController,
 } from "../../components/ai-elements/prompt-input.js";
+import { DropdownMenuItem } from "../../components/ui/dropdown-menu.js";
 import {
   REASONING_EFFORTS,
   type Activity,
@@ -112,6 +113,9 @@ interface ChatInputProps {
   /** 当前会话最近一份待办计划。 */
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
+  /** 联网搜索开关：开启时本轮运行挂载 web_search 工具 */
+  webSearch?: boolean;
+  onWebSearchChange?: (value: boolean) => void;
   /** 是否已配置可用大模型提供商（API Key 与模型有效） */
   isProviderConfigured?: boolean;
   /** 尝试发送但在未配置 API 厂商时被拦截的回调 */
@@ -237,7 +241,7 @@ function PromptInputActionsRight({
       disabled={!canSend && !isRunning}
       status={isRunning ? "streaming" : undefined}
       onStop={onStop}
-      className="chat-submit-btn size-8 rounded-lg transition-colors shadow-none border-0 border-none outline-none focus:outline-none focus-visible:ring-0 bg-zinc-100 text-black hover:bg-white disabled:opacity-30 disabled:bg-zinc-800 disabled:text-zinc-500"
+      className="chat-submit-btn size-8 rounded-full transition-colors shadow-none"
     />
   );
 }
@@ -271,6 +275,8 @@ function ChatInputContent({
   todoActivity,
   permissionMode,
   onPermissionModeChange,
+  webSearch = false,
+  onWebSearchChange,
   isProviderConfigured = true,
   onBlockedSend,
 }: ChatInputProps) {
@@ -783,6 +789,19 @@ function ChatInputContent({
                   />
                   <PromptInputActionMenuContent className="border-zinc-200 bg-white text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
                     <PromptInputActionAddAttachments label="添加图片或文件" />
+                    {/* 联网搜索开关：仅勾选时本轮运行挂载 web_search 工具（preventDefault 保持菜单开启便于切换） */}
+                    <DropdownMenuItem
+                      data-testid="web-search-menu-item"
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        onWebSearchChange?.(!webSearch);
+                      }}
+                      className={webSearch ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" : undefined}
+                    >
+                      <GlobeIcon className="mr-2 size-4" />
+                      网络搜索
+                      {webSearch && <CheckIcon className="ml-auto size-4 text-blue-500 dark:text-blue-400" />}
+                    </DropdownMenuItem>
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
                 {/* 运行权限选择：只影响后续发起的运行。 */}
@@ -1127,7 +1146,17 @@ function ChatInputContent({
               </PromptInputTools>
 
               {/* 右侧：提交/停止/排队/立即引导操作区 */}
-              <div className="shrink-0 z-10 relative">
+              <div className="flex items-center gap-2 shrink-0 z-10 relative">
+                {webSearch && (
+                  <span
+                    data-testid="web-search-active-badge"
+                    title="本轮对话将联网搜索"
+                    className="inline-flex items-center gap-1 rounded-full border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 whitespace-nowrap animate-in fade-in zoom-in-95 duration-100"
+                  >
+                    <GlobeIcon className="size-3 shrink-0" />
+                    网络搜索
+                  </span>
+                )}
                 <PromptInputActionsRight
                   hasText={hasText}
                   isRunning={isRunning}

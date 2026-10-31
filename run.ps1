@@ -9,7 +9,7 @@ Write-Host "========================================================" -Foregroun
 
 $root = $PSScriptRoot
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\backend'; dotnet run"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\backend'; `$env:ASPNETCORE_URLS='http://127.0.0.1:8788'; dotnet run"
 Start-Sleep -Seconds 3
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\frontend'; pnpm --filter @deepagent/web dev --host 127.0.0.1 --port 5175"
 

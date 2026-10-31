@@ -989,3 +989,46 @@ html.light [data-testid="wechat-refresh-qrcode-btn"]:hover,
 html.light [data-testid="wechat-show-qrcode-btn"]:hover {
   background-color: #e2e8f0 !important;
 }
+
+/* ================= ZCode 式渐变流光文字（思考标签用） =================
+ * 对齐 ZCode animated-gradient-text：background-clip:text 三段渐变流动，
+ * 实色(0-34%) → 淡(50%) → 实色(66-100%)，4s 线性循环。 */
+@keyframes zcode-gradient-flow {
+  0% {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.animated-gradient-text {
+  --animated-gradient-text-strong: #e8ecf3;
+  --animated-gradient-text-soft: rgba(232, 236, 243, 0.22);
+  background: linear-gradient(
+    90deg,
+    var(--animated-gradient-text-strong) 0%,
+    var(--animated-gradient-text-strong) 34%,
+    var(--animated-gradient-text-soft) 50%,
+    var(--animated-gradient-text-strong) 66%,
+    var(--animated-gradient-text-strong) 100%
+  );
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: zcode-gradient-flow 4s linear infinite;
+  display: inline-block;
+  transform: translateZ(0);
+  will-change: background-position;
+  backface-visibility: hidden;
+}
+html.light .animated-gradient-text {
+  --animated-gradient-text-strong: #09090b;
+  --animated-gradient-text-soft: rgba(9, 9, 11, 0.24);
+}
+@media (prefers-reduced-motion: reduce) {
+  .animated-gradient-text {
+    animation: none;
+  }
+}

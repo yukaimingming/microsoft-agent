@@ -11,7 +11,6 @@ import {
   getToolActionLabel,
   plainProcessText,
   formatReasoningPreview,
-  ReasoningPreview,
   ProcessActivityGroup,
 } from "../src/features/chat/process-activity-group.js";
 
@@ -92,8 +91,8 @@ describe("ProcessActivityGroup 状态展示", () => {
 
     expect(html).toContain("正在分析，用时 0分0秒");
     expect(html).toContain("shimmer");
-    expect(html).toContain(">思考<");
-    expect(html).not.toContain("正在思考");
+    expect(html).toContain("正在思考");
+    expect(html).toContain("animated-gradient-text");
     expect(html).toContain('aria-expanded="true"');
     expect(html).not.toContain('open=""');
     expect(html).toContain("模型返回的原始推理内容。");
@@ -152,7 +151,8 @@ describe("ProcessActivityGroup 状态展示", () => {
 
     expect(html).toContain("README.md");
     expect(html).toContain("正在分析文件");
-    expect(html).toContain(">思考<");
+    expect(html).toContain("正在思考");
+    expect(html).toContain("animated-gradient-text");
     expect(html).toContain("shimmer");
     expect(html).toContain("输入参数");
     expect(html).not.toContain('open=""');
@@ -382,22 +382,31 @@ describe("ProcessActivityGroup 状态展示", () => {
   it("思考流式进行中与输出结束时的预览渲染模式切换", () => {
     const multilineContent = "正在分析需求\n检索相关代码\n执行验证";
 
-    // 流式中：具有 overflow-hidden 跑马灯滚动容器
-    const streamingHtml = renderToStaticMarkup(createElement(ReasoningPreview, {
-      content: multilineContent,
-      streaming: true,
+    // 流式中：ZCode 式折叠 + 末行滚动预览容器（overflow-hidden 且尾行贴右）
+    const streamingHtml = renderToStaticMarkup(createElement(ProcessActivityGroup, {
+      items: [{ ...reasoningItem, streaming: true, content: multilineContent }],
+      runCompleted: false,
     }));
+    expect(streamingHtml).toContain("正在思考");
     expect(streamingHtml).toContain("overflow-hidden");
-    expect(streamingHtml).toContain("正在分析需求 · 检索相关代码 · 执行验证");
+    // 预览只取最后一个非空行，不再拼接全部行
+    expect(streamingHtml).toContain("执行验证");
+    expect(streamingHtml).not.toContain("正在分析需求 · 检索相关代码 · 执行验证");
 
-    // 输出结束（非流式）：立即结束滚动，恢复为平静的 truncate 文本
-    const completedHtml = renderToStaticMarkup(createElement(ReasoningPreview, {
-      content: multilineContent,
-      streaming: false,
+    // 输出结束：定格为「思考 · 持续了 N 秒」，预览彻底消失
+    const completedHtml = renderToStaticMarkup(createElement(ProcessActivityGroup, {
+      items: [
+        { ...reasoningItem, streaming: false, reasoningDuration: 5, content: multilineContent },
+        { id: "tool:after", kind: "activity" as const, activity: { id: "tool:after", kind: "tool" as const, status: "completed" as const, title: "ls", startedAt: 200 } },
+      ],
+      isActive: true,
+      runCompleted: false,
     }));
-    expect(completedHtml).toContain("truncate");
+    expect(completedHtml).toContain("思考");
+    expect(completedHtml).toContain("持续了 5 秒");
+    expect(completedHtml).not.toContain("正在思考");
     expect(completedHtml).not.toContain("overflow-hidden");
-    expect(completedHtml).toContain("正在分析需求 · 检索相关代码 · 执行验证");
+    expect(completedHtml).not.toContain("执行验证");
   });
 
   it("过程说明 Markdown 转普通文本（去除 ## 标题、代码围栏、加粗与行内代码）", () => {

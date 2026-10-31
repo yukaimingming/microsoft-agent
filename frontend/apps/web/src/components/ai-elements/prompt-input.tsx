@@ -42,7 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ChatStatus, FileUIPart, SourceDocumentUIPart } from "ai";
 import {
-  CornerDownLeftIcon,
+  ArrowUpIcon,
   ImageIcon,
   Monitor,
   PlusIcon,
@@ -1227,7 +1227,8 @@ export const PromptInputSubmit = ({
 }: PromptInputSubmitProps) => {
   const isGenerating = status === "submitted" || status === "streaming";
 
-  let Icon = <CornerDownLeftIcon className="size-4" />;
+  // 对齐官网 Chat 示例：就绪时为向上箭头发送
+  let Icon = <ArrowUpIcon className="size-4" />;
 
   if (status === "submitted") {
     Icon = <Spinner />;

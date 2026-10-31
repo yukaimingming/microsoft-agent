@@ -40,6 +40,8 @@ export interface AgentRunOptions {
   effort: "low" | "medium" | "high";
   workspaceRoot?: string;
   permissionMode?: PermissionMode;
+  /** 本次运行是否启用联网搜索工具。 */
+  webSearch?: boolean;
 }
 
 /** 单个中断的决策类型。 */

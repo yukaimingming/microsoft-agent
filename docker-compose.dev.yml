@@ -1,0 +1,17 @@
+# 开发环境专用：5175 前端代理的后端，挂载本地开发时代的数据（历史会话 + 微信凭据）
+# 用法：docker compose -f docker-compose.dev.yml up -d backend-dev
+services:
+  backend-dev:
+    image: microsoftagent-backend:latest
+    container_name: maf-backend-dev
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8788
+    volumes:
+      - ./workspace:/app/workspace
+      - ./backend/appsettings.json:/app/appsettings.json:ro
+      # 本地开发时代的历史数据（dotnet run 时代的 .data），与 Docker 环境完全隔离
+      - ./backend/bin/Debug/net10.0/.data:/app/.data
+    ports:
+      - "8789:8788"

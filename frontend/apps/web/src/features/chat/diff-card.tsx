@@ -47,9 +47,9 @@ export function DiffCard({ changes }: DiffCardProps) {
   const totalDeletions = changes.reduce((sum, change) => sum + change.deletions, 0);
 
   return (
-    <Queue className="my-2 border-zinc-800/80 bg-zinc-950/60">
+    <Queue className="my-2">
       <QueueSection defaultOpen={false} open={isOpen} onOpenChange={setIsOpen}>
-        <QueueSectionTrigger className="bg-zinc-900/60 text-zinc-300 hover:bg-zinc-900">
+        <QueueSectionTrigger className="bg-secondary/50 text-muted-foreground hover:bg-accent">
           <QueueSectionLabel
             count={changes.length}
             label={`个文件变更 (+${totalAdditions} −${totalDeletions})`}
@@ -92,11 +92,11 @@ function FileDiffRow({ change }: { change: FileChangeSummary }) {
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="-mx-1 flex w-full select-none items-center gap-2.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-zinc-900/60"
+        className="-mx-1 flex w-full select-none items-center gap-2.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent/60"
         title={change.path}
         aria-expanded={expanded}
       >
-        <ChevronRightIcon className={cn("size-3 shrink-0 text-zinc-500 transition-transform", expanded && "rotate-90")} />
+        <ChevronRightIcon className={cn("size-3 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
         <OperationIcon
           className={cn(
             "size-3.5 shrink-0",
@@ -107,12 +107,12 @@ function FileDiffRow({ change }: { change: FileChangeSummary }) {
                 : "text-emerald-400/80",
           )}
         />
-        <span className="truncate font-mono text-[12.5px] text-zinc-200">
-          {dirPart && <span className="text-zinc-500">{dirPart}</span>}
+        <span className="truncate font-mono text-[12.5px] text-foreground">
+          {dirPart && <span className="text-muted-foreground">{dirPart}</span>}
           {fileName}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span className="select-none text-[10.5px] text-zinc-500">{operationLabel}</span>
+          <span className="select-none text-[10.5px] text-muted-foreground">{operationLabel}</span>
           {change.additions > 0 && <span className="font-mono text-[11px] text-emerald-400">+{change.additions}</span>}
           {change.deletions > 0 && <span className="font-mono text-[11px] text-red-400">−{change.deletions}</span>}
         </span>
@@ -123,7 +123,7 @@ function FileDiffRow({ change }: { change: FileChangeSummary }) {
           {change.revisions.map((revision, revisionIndex) => (
             <div key={revisionIndex} className="max-h-64 overflow-auto rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] py-1">
               {change.revisions.length > 1 && (
-                <div className="flex items-center gap-2 border-b border-zinc-800/60 px-2 pt-1 pb-0.5 text-[10.5px] text-zinc-500">
+                <div className="flex items-center gap-2 border-b border-border/60 px-2 pt-1 pb-0.5 text-[10.5px] text-muted-foreground">
                   <span>第 {revisionIndex + 1} 次修改</span>
                   {revision.additions > 0 && <span className="font-mono text-emerald-400/90">+{revision.additions}</span>}
                   {revision.deletions > 0 && <span className="font-mono text-red-400/90">−{revision.deletions}</span>}
@@ -146,7 +146,7 @@ function FileDiffRow({ change }: { change: FileChangeSummary }) {
                 ))}
               </pre>
               {revision.truncated && (
-                <div className="px-2 pt-1 text-[10.5px] text-zinc-500">差异内容过长，仅显示部分行。</div>
+                <div className="px-2 pt-1 text-[10.5px] text-muted-foreground">差异内容过长，仅显示部分行。</div>
               )}
             </div>
           ))}

@@ -2,7 +2,7 @@
  * 模型与提供商设置弹窗。
  *
  * 严格按照用户需求重构：
- * 1. 颜色与主界面完全统一（纯黑底色 bg-[#09090b]、深灰边框 border-zinc-800、白色高亮 text-zinc-100）。
+ * 1. 颜色与主界面完全统一（纯黑底色 bg-[#09090b]、深灰边框 border-border、白色高亮 text-foreground）。
  * 2. 支持自定义添加任意模型厂商（不固定死，用户可自由输入厂商名称、Base URL、API Key 与兼容协议）。
  * 3. 获取模型后支持“一键全部添加/导入”到可用模型列表中，并支持自由切换默认模型与删除不需要的模型。
  * 4. 密钥掩码保存，安全合规，绝不外泄。
@@ -305,14 +305,14 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
   }, [draft]);
 
   return (
-    <div className="grid grid-cols-[200px_1fr] gap-6 text-zinc-200">
+    <div className="grid grid-cols-[200px_1fr] gap-6 text-foreground">
       {/* ================= 左侧：厂商列表与新增按钮 ================= */}
-      <div className="flex flex-col border-r border-zinc-800/80 pr-4 space-y-4">
+      <div className="flex flex-col border-r border-border pr-4 space-y-4">
         {/* 新增自定义厂商主按钮 */}
         <button
           type="button"
           onClick={() => startCreate("openai-compatible", "自定义模型厂商")}
-          className="flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-lg bg-zinc-100 hover:bg-white text-black text-[12.5px] font-medium transition-colors shadow-xs"
+          className="flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-[12.5px] font-medium transition-colors shadow-xs"
         >
           <PlusIcon className="size-3.5 stroke-[2.5]" />
           <span>添加自定义厂商</span>
@@ -320,9 +320,9 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
 
         {/* 已配置的厂商列表 */}
         <div className="space-y-1">
-          <p className="px-1 text-[11px] font-medium uppercase tracking-wider text-zinc-500">已配置厂商</p>
+          <p className="px-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">已配置厂商</p>
           {providers.length === 0 ? (
-            <p className="px-2 py-2 text-[12px] text-zinc-500">暂未配置厂商</p>
+            <p className="px-2 py-2 text-[12px] text-muted-foreground">暂未配置厂商</p>
           ) : (
             providers.map((p) => {
               const isSelected = draft.id === p.id;
@@ -333,14 +333,14 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                   onClick={() => selectProvider(p.id)}
                   className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors border ${
                     isSelected
-                      ? "bg-zinc-800 border-zinc-700 text-white font-medium"
-                      : "bg-transparent border-transparent text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                      ? "bg-accent border-border text-accent-foreground font-medium"
+                      : "bg-transparent border-transparent text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground"
                   }`}
                 >
                   <span className="truncate">{p.label}</span>
                   <span
                     className={`size-2 shrink-0 rounded-full ${
-                      p.enabled ? "bg-emerald-400" : "bg-zinc-600"
+                      p.enabled ? "bg-emerald-400" : "bg-muted-foreground/40"
                     }`}
                     title={p.enabled ? "已启用" : "已停用"}
                   />
@@ -351,24 +351,24 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
         </div>
 
         {/* 预设快捷模板 */}
-        <div className="pt-2 border-t border-zinc-800/60 space-y-1">
-          <p className="px-1 text-[11px] font-medium uppercase tracking-wider text-zinc-500">快速模板</p>
+        <div className="pt-2 border-t border-border space-y-1">
+          <p className="px-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">快速模板</p>
           {CONFIGURABLE_PROTOCOL_TYPES.map((type) => (
             <button
               key={type}
               type="button"
               onClick={() => startCreate(type, TYPE_LABEL[type])}
-              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[12px] text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors"
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[12px] text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground transition-colors"
             >
-              <PlusIcon className="size-3 text-zinc-500" />
+              <PlusIcon className="size-3 text-muted-foreground" />
               <span>{TYPE_LABEL[type]}</span>
             </button>
           ))}
         </div>
 
         {/* 外观上拉选择（向上弹出切换浅色/深色背景） */}
-        <div className="pt-3 border-t border-zinc-800/60 relative mt-auto" ref={themeDropdownRef}>
-          <label className="block mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+        <div className="pt-3 border-t border-border relative mt-auto" ref={themeDropdownRef}>
+          <label className="block mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             外观
           </label>
           <div className="relative">
@@ -376,7 +376,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
               type="button"
               data-testid="appearance-dropup-btn"
               onClick={() => setIsThemeOpen((v) => !v)}
-              className="flex w-full items-center justify-between rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-[12.5px] text-zinc-200 hover:border-zinc-700 transition-colors"
+              className="flex w-full items-center justify-between rounded-md border border-input bg-secondary/50 px-2.5 py-1.5 text-[12.5px] text-foreground hover:border-ring/60 transition-colors"
               title="切换外观背景颜色"
             >
               <div className="flex items-center gap-2">
@@ -389,8 +389,8 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
               </div>
               <ChevronUpIcon
                 className={cn(
-                  "size-3.5 text-zinc-500 transition-transform duration-150",
-                  isThemeOpen && "rotate-180 text-zinc-200",
+                  "size-3.5 text-muted-foreground transition-transform duration-150",
+                  isThemeOpen && "rotate-180 text-foreground",
                 )}
               />
             </button>
@@ -399,7 +399,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
             {isThemeOpen && (
               <div
                 data-testid="appearance-dropup-menu"
-                className="absolute bottom-full mb-1 left-0 z-50 w-full rounded-md border border-zinc-800 bg-zinc-950 p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+                className="absolute bottom-full mb-1 left-0 z-50 w-full rounded-md border border-border bg-card p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100"
               >
                 <button
                   type="button"
@@ -411,8 +411,8 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                   className={cn(
                     "flex w-full items-center justify-between rounded px-2 py-1.5 text-[12px] transition-colors",
                     theme === "dark"
-                      ? "bg-zinc-800 text-white font-medium"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200",
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground",
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -431,8 +431,8 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                   className={cn(
                     "flex w-full items-center justify-between rounded px-2 py-1.5 text-[12px] transition-colors",
                     theme === "light"
-                      ? "bg-zinc-800 text-white font-medium"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200",
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground",
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -450,10 +450,10 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
       {/* ================= 右侧：厂商详细配置表单 ================= */}
       <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
         {/* 顶部标题与当前编辑状态 */}
-        <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
+        <div className="flex items-center justify-between pb-2 border-b border-border">
           <div>
-            <h3 className="text-[14px] font-semibold text-zinc-100">{draft.label || "配置厂商"}</h3>
-            <p className="text-[11.5px] text-zinc-500">
+            <h3 className="text-[14px] font-semibold text-foreground">{draft.label || "配置厂商"}</h3>
+            <p className="text-[11.5px] text-muted-foreground">
               {isEditing ? `编辑已有配置（ID: ${draft.id}）` : "正在添加新的模型提供商"}
             </p>
           </div>
@@ -485,18 +485,18 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
         {/* 厂商名称与协议类型 */}
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="mb-1 block text-[11.5px] text-zinc-400">厂商显示名称 (Label)</span>
+            <span className="mb-1 block text-[11.5px] text-muted-foreground">厂商显示名称 (Label)</span>
             <input
               type="text"
               value={draft.label}
               onChange={(e) => setDraft({ ...draft, label: e.target.value })}
               placeholder="如：DeepSeek / SiliconFlow / 本地 Ollama"
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900/90 px-3 py-1.5 text-[12.5px] text-zinc-100 outline-none focus:border-zinc-600"
+              className="w-full rounded-md border border-input bg-secondary/50 px-3 py-1.5 text-[12.5px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-[11.5px] text-zinc-400">API 协议</span>
+            <span className="mb-1 block text-[11.5px] text-muted-foreground">API 协议</span>
             <Select
               value={draft.type}
               onValueChange={(value) => {
@@ -508,17 +508,17 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                 });
               }}
             >
-              <SelectTrigger className="h-[31px] w-full rounded-md border-zinc-800 bg-zinc-900/90 px-2.5 text-[12.5px] text-zinc-100 shadow-none hover:border-zinc-700 focus-visible:border-zinc-600 focus-visible:ring-0">
+              <SelectTrigger className="h-[31px] w-full rounded-md border-input bg-secondary/50 px-2.5 text-[12.5px] text-foreground shadow-none hover:border-ring/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
+              <SelectContent className="border-border bg-card text-foreground">
                 {CONFIGURABLE_PROTOCOL_TYPES.map((type) => (
-                  <SelectItem key={type} value={type} className="text-[12.5px] focus:bg-zinc-800 focus:text-white">
+                  <SelectItem key={type} value={type} className="text-[12.5px] focus:bg-accent focus:text-accent-foreground">
                     {TYPE_LABEL[type]}
                   </SelectItem>
                 ))}
                 {draft.type === "anthropic" && (
-                  <SelectItem value="anthropic" className="text-[12.5px] focus:bg-zinc-800 focus:text-white">
+                  <SelectItem value="anthropic" className="text-[12.5px] focus:bg-accent focus:text-accent-foreground">
                     {TYPE_LABEL.anthropic}（已有配置）
                   </SelectItem>
                 )}
@@ -529,19 +529,19 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
 
         {/* API Base URL */}
         <label className="block">
-          <span className="mb-1 block text-[11.5px] text-zinc-400">API Base URL</span>
+          <span className="mb-1 block text-[11.5px] text-muted-foreground">API Base URL</span>
           <input
             type="url"
             value={draft.baseUrl}
             onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
             placeholder="https://api.example.com/v1"
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900/90 px-3 py-1.5 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
+            className="w-full rounded-md border border-input bg-secondary/50 px-3 py-1.5 font-mono text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
         </label>
 
         {/* API Key */}
         <label className="block">
-          <span className="mb-1 block text-[11.5px] text-zinc-400">
+          <span className="mb-1 block text-[11.5px] text-muted-foreground">
             API Key {isEditing ? "（留空表示保留当前已配置密钥）" : ""}
           </span>
           <input
@@ -550,17 +550,17 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
             onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
             placeholder={isEditing ? "••••••••（已加密安全保存）" : "输入 sk- 开头的 API Key..."}
             autoComplete="off"
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900/90 px-3 py-1.5 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
+            className="w-full rounded-md border border-input bg-secondary/50 px-3 py-1.5 font-mono text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
-          <span className="mt-1 block text-[11px] text-zinc-500">
+          <span className="mt-1 block text-[11px] text-muted-foreground">
             安全保障：API Key 仅保存在本地服务端，前端只保留掩码，绝不进入浏览器存储或对外泄露。
           </span>
         </label>
 
         {/* ================= 模型列表管理与一键全量导入 ================= */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 space-y-2.5 settings-models-box">
+        <div className="rounded-lg border border-border bg-background/40 p-3 space-y-2.5 settings-models-box">
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-zinc-300 settings-models-label">
+            <span className="text-[12px] font-medium text-foreground/90 settings-models-label">
               可用模型列表 ({draft.models.length})
             </span>
             <div className="flex items-center gap-2">
@@ -568,7 +568,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                 type="button"
                 onClick={() => void handleFetchModels()}
                 disabled={fetchingModels}
-                className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800/80 px-2.5 py-1 text-[11.5px] text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-50 settings-fetch-models-btn"
+                className="flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 py-1 text-[11.5px] text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 settings-fetch-models-btn"
               >
                 <RefreshCwIcon className={`size-3 ${fetchingModels ? "animate-spin" : ""}`} />
                 <span>{fetchingModels ? "正在查询..." : "获取远程模型列表"}</span>
@@ -578,14 +578,14 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
 
           {/* 模型列表呈现 */}
           {draft.models.length > 0 ? (
-            <div className="max-h-36 overflow-y-auto space-y-1 rounded border border-zinc-800/80 bg-black/60 p-2 settings-model-list-scroll">
+            <div className="max-h-36 overflow-y-auto space-y-1 rounded border border-border/60 bg-background/60 p-2 settings-model-list-scroll">
               {draft.models.map((model) => {
                 const isDefault = draft.defaultModel === model;
                 return (
                   <div
                     key={model}
                     className={`flex items-center justify-between gap-2 px-2.5 py-1 rounded text-[12px] transition-colors settings-model-item ${
-                      isDefault ? "bg-zinc-800 text-white is-default" : "text-zinc-300 hover:bg-zinc-900"
+                      isDefault ? "bg-accent text-accent-foreground is-default" : "text-foreground/90 hover:bg-accent/60"
                     }`}
                   >
                     <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
@@ -598,7 +598,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                       />
                       <span className="font-mono truncate">{model}</span>
                       {isDefault && (
-                        <span className="text-[10.5px] bg-zinc-700 px-1.5 py-0.2 rounded text-zinc-200 shrink-0 settings-default-badge">
+                        <span className="text-[10.5px] bg-primary/15 text-primary px-1.5 py-0.2 rounded font-medium shrink-0 settings-default-badge">
                           默认模型
                         </span>
                       )}
@@ -607,7 +607,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                     <button
                       type="button"
                       onClick={() => handleRemoveSingleModel(model)}
-                      className="p-0.5 text-zinc-500 hover:text-rose-400 rounded transition-colors"
+                      className="p-0.5 text-muted-foreground hover:text-rose-400 rounded transition-colors"
                       title="移除此模型"
                     >
                       <Trash2Icon className="size-3" />
@@ -617,7 +617,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
               })}
             </div>
           ) : (
-            <p className="rounded border border-zinc-800/80 bg-black/40 px-3 py-2 text-[12px] text-zinc-500 settings-model-empty">
+            <p className="rounded border border-border/60 bg-background/40 px-3 py-2 text-[12px] text-muted-foreground settings-model-empty">
               当前暂未添加任何模型。可点击上方「获取远程模型列表」或在下方手动添加。
             </p>
           )}
@@ -635,13 +635,13 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                 }
               }}
               placeholder="输入模型 ID，如 deepseek-chat, gpt-4o 等"
-              className="flex-1 rounded border border-zinc-800 bg-zinc-900 px-2.5 py-1 font-mono text-[12px] text-zinc-200 outline-none focus:border-zinc-600 settings-input"
+              className="flex-1 rounded border border-input bg-secondary/50 px-2.5 py-1 font-mono text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 settings-input"
             />
             <button
               type="button"
               onClick={() => void handleAddModel()}
               disabled={!manualModel.trim()}
-              className="rounded bg-zinc-800 px-3 py-1 text-[12px] text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 transition-colors settings-add-model-btn"
+              className="rounded border border-input bg-transparent px-3 py-1 text-[12px] text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-40 transition-colors settings-add-model-btn"
             >
               添加
             </button>
@@ -651,14 +651,14 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
           {modelError && (
             <div className="rounded border border-rose-900/60 bg-rose-950/40 p-2 text-[11.5px] text-rose-300">
               <p className="font-medium">{modelError.message}</p>
-              {modelError.hint && <p className="text-zinc-400 mt-0.5">{modelError.hint}</p>}
+              {modelError.hint && <p className="text-muted-foreground mt-0.5">{modelError.hint}</p>}
             </div>
           )}
         </div>
 
         {/* 推理强度设置 */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 space-y-2">
-          <span className="block text-[11.5px] font-medium text-zinc-400">可用推理强度档位</span>
+        <div className="rounded-lg border border-border bg-background/40 p-3 space-y-2">
+          <span className="block text-[11.5px] font-medium text-muted-foreground">可用推理强度档位</span>
           <div className="flex items-center gap-3">
             <div className="flex gap-1.5">
               {REASONING_EFFORTS.map((opt) => {
@@ -682,8 +682,8 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                     }}
                     className={`rounded border px-2.5 py-0.5 text-[11.5px] transition-colors ${
                       enabled
-                        ? "border-zinc-500 bg-zinc-800 text-white font-medium"
-                        : "border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300"
+                        ? "border-ring bg-accent text-accent-foreground font-medium"
+                        : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {opt === "low" ? "低 (low)" : opt === "medium" ? "中 (medium)" : "高 (high)"}
@@ -692,7 +692,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
               })}
             </div>
 
-            <label className="flex items-center gap-1.5 text-[11.5px] text-zinc-400 cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground cursor-pointer">
               <input
                 type="checkbox"
                 checked={draft.reasoningUnsupported}
@@ -719,8 +719,8 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
         )}
 
         {/* 底部启用状态与保存/测试按钮 */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
-          <label className="flex items-center gap-2 text-[12.5px] text-zinc-300 cursor-pointer">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+          <label className="flex items-center gap-2 text-[12.5px] text-foreground/90 cursor-pointer">
             <input
               type="checkbox"
               checked={draft.enabled}
@@ -740,7 +740,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
               type="button"
               onClick={() => void handleTest()}
               disabled={testing || !isEditing}
-              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-[12px] text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 transition-colors settings-test-btn"
+              className="rounded-lg border border-input bg-transparent px-3 py-1.5 text-[12px] text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-40 transition-colors settings-test-btn"
             >
               {testing ? "测试中…" : "测试连接"}
             </button>
@@ -749,7 +749,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
               type="button"
               onClick={() => void handleSave()}
               disabled={saving}
-              className="flex items-center gap-1.5 rounded-lg bg-zinc-100 hover:bg-white px-4 py-1.5 text-[12px] font-medium text-black disabled:opacity-50 transition-colors settings-save-btn"
+              className="flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-1.5 text-[12px] font-medium disabled:opacity-50 transition-colors settings-save-btn"
             >
               <CheckIcon className="size-3.5 stroke-[2.5]" />
               <span>{saving ? "保存中…" : isEditing ? "保存修改" : "保存新厂商"}</span>
@@ -769,7 +769,7 @@ function SettingsForm(props: Omit<SettingsModalProps, "open" | "onClose" | "load
                 <p className="font-medium">
                   连接测试成功！耗时: {testResult.latencyMs}ms，模型: {testResult.modelId}
                 </p>
-                {testResult.reply && <p className="text-zinc-300 mt-1 font-mono text-[11px] truncate">响应: {testResult.reply}</p>}
+                {testResult.reply && <p className="text-foreground/90 mt-1 font-mono text-[11px] truncate">响应: {testResult.reply}</p>}
               </div>
             ) : (
               <p className="font-medium">测试失败: {testResult.message}</p>

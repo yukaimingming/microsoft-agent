@@ -316,6 +316,23 @@ export function App() {
     }
   }, [permissionMode]);
 
+  // 联网搜索开关：仅勾选时本轮运行挂载 web_search 工具，否则模型仅凭自身知识回答。
+  const [webSearch, setWebSearch] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("maf_web_search") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("maf_web_search", webSearch ? "1" : "0");
+    } catch {
+      // 浏览器禁用本地存储时，联网搜索开关仍在当前页面会话内生效。
+    }
+  }, [webSearch]);
+
   const effortResolution = useMemo(() => {
     if (!currentModelId) {
       return { effort: settings.effort, fallbackApplied: false, supported: availableEffortsForModel("") };
@@ -369,9 +386,10 @@ export function App() {
         effort: effortResolution.effort,
         workspaceRoot: workspaceRoot ?? undefined,
         permissionMode,
+        webSearch,
       }, attachments);
     },
-    [canSend, send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode],
+    [canSend, send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode, webSearch],
   );
 
   // 新建会话
@@ -499,6 +517,7 @@ export function App() {
           effort: effortResolution.effort,
           workspaceRoot: workspaceRoot ?? undefined,
           permissionMode,
+          webSearch,
         });
       }, 60);
     }
@@ -511,6 +530,7 @@ export function App() {
       effort: effortResolution.effort,
       workspaceRoot: workspaceRoot ?? undefined,
       permissionMode,
+      webSearch,
     });
   };
 
@@ -785,6 +805,8 @@ export function App() {
             onSelectProviderModel={settings.selectProviderModel}
             permissionMode={permissionMode}
             onPermissionModeChange={setPermissionMode}
+            webSearch={webSearch}
+            onWebSearchChange={setWebSearch}
             onOpenSettings={() => setSettingsOpen(true)}
             workspaceRoot={workspaceRoot}
             messages={state.messages}

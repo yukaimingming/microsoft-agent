@@ -19,5 +19,8 @@ sessions/
 agent-file-memory/
 *.local.md
 frontend/apps/web/pnpm-lock.yaml
+.pnpm-store/
+*.backup.*
+Dockerfile.hotfix
 
 demo-notes.txt

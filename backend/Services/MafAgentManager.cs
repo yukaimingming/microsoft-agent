@@ -20,6 +20,7 @@ public sealed class MafAgentManager
     // 会话与执行管理
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
     private readonly ConcurrentDictionary<string, AIAgent> _agents = new();
+    private readonly ConcurrentDictionary<string, bool> _agentWebSearch = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeCts = new();
     private readonly ConcurrentDictionary<string, List<ToolApprovalRequestContent>> _pendingApprovals = new();
 
@@ -63,6 +64,14 @@ public sealed class MafAgentManager
         // 解析模型提供商
         var providerId = forwardedProps.TryGetValue("providerId", out var pObj) && pObj is not null ? pObj.ToString() : null;
         var requestedModelId = forwardedProps.TryGetValue("modelId", out var mObj) && mObj is not null ? mObj.ToString() : null;
+
+        // 联网搜索开关：仅当输入明确携带 webSearch=true 时才挂载 Exa 搜索工具，
+        // 否则模型只能凭自身知识回答（兼容 bool 与 JSON JsonElement 两种反序列化形态）。
+        var webSearchRaw = forwardedProps.TryGetValue("webSearch", out var wsFlagObj) && wsFlagObj is not null
+            ? wsFlagObj.ToString()
+            : null;
+        var webSearchRequested = string.Equals(webSearchRaw, "True", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(webSearchRaw, "true", StringComparison.OrdinalIgnoreCase);
 
         var llm = _configuration.GetSection(LlmOptions.SectionName).Get<LlmOptions>() ?? new LlmOptions();
         var provider = _providerService.GetActive(providerId);
@@ -110,10 +119,10 @@ public sealed class MafAgentManager
             _ = adapter.RecordFileChangedAsync(change.Path, change.Before, change.After);
         };
 
-            // 2. 联网搜索（Exa MCP）
+            // 2. 联网搜索（Exa MCP）——仅当本轮请求开启 webSearch 时挂载
             var webSearch = _configuration.GetSection(WebSearchOptions.SectionName).Get<WebSearchOptions>() ?? new WebSearchOptions();
             IReadOnlyList<AITool>? webSearchTools = null;
-            if (webSearch.Enabled)
+            if (webSearch.Enabled && webSearchRequested)
             {
                 using var startupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 var (tools, _) = await WebSearchTools.TryCreateAsync(webSearch.Endpoint, webSearch.ApiKey, startupCts.Token);
@@ -134,7 +143,7 @@ public sealed class MafAgentManager
                 const string defaultPersona = """
                     # Demo 助手
 
-                    你是 MAF Harness 的全功能演示助手，名叫「小哈」。请始终用中文与用户交流。
+                    你是 MAF Harness 的全功能演示助手，名叫「kelefie」。请始终用中文与用户交流。
 
                     ## 行为约定
 
@@ -163,7 +172,13 @@ public sealed class MafAgentManager
             // 6. 装配 ChatClient 与 AIAgent（若是审批恢复续跑，必须复用同一个 AIAgent 实例，以确保 ToolApprovalAgent 内部挂起状态匹配！）
             var chatClient = llm.CreateChatClient();
             AIAgent agent;
-            if (isResume && _agents.TryGetValue(threadId, out var existingAgent))
+            // 审批续跑复用既有 Agent；但若本轮 webSearch 开关与建 Agent 时不一致，
+            // 必须重建（工具列表在创建时固化），保证开关即时生效。
+            var existingAgent = isResume ? _agents.GetValueOrDefault(threadId) : null;
+            bool reuseExisting = existingAgent is not null
+                && _agentWebSearch.TryGetValue(threadId, out var lastWebSearch)
+                && lastWebSearch == webSearchRequested;
+            if (reuseExisting && existingAgent is not null)
             {
                 agent = existingAgent;
             }
@@ -172,6 +187,7 @@ public sealed class MafAgentManager
                 agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
                     fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot));
                 _agents[threadId] = agent;
+                _agentWebSearch[threadId] = webSearchRequested;
             }
 
             // 7. 获取或恢复会话

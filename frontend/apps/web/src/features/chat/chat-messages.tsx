@@ -346,6 +346,7 @@ export function buildTurnProcessTimeline(
             content: item.reasoning,
             startedAt: item.reasoningStartedAt ?? createdAt,
             streaming: item.reasoningStreaming,
+            reasoningDuration: item.reasoningDuration,
             section: "reasoning",
           });
           if (!item.content.trim() || isProcess || item.id !== finalMessage?.id) {
