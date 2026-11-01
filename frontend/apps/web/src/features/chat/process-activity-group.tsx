@@ -717,6 +717,32 @@ function ProcessNoteActivity({
   );
 }
 
+// ZCode 桌面端最新的思考 loading 图标：3×3 像素块按顺时针依次点亮，中心块保持静止
+// 像素块用 bg-current 跟随容器文字色（text-foreground），黑白双主题自动适配
+const LOADING_PIXEL_ORDER = [0, 1, 2, 5, 8, 7, 6, 3];
+
+function LoadingPixels() {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-[13px] shrink-0 grid-cols-3 grid-rows-3 gap-[1.3px] text-foreground"
+    >
+      {Array.from({ length: 9 }, (_, pixel) => (
+        <span
+          key={pixel}
+          className="zcode-loading-pixel size-full rounded-[1px] bg-current"
+          style={{
+            opacity: pixel === 4 ? 0.07 : 0.15,
+            animationName: pixel === 4 ? "none" : undefined,
+            animationDuration: "950ms",
+            animationDelay: `${Math.max(0, LOADING_PIXEL_ORDER.indexOf(pixel)) * 110}ms`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function ProcessActivityGroup({
   items,
   isActive = false,
@@ -881,7 +907,8 @@ export function ProcessActivityGroup({
         className="flex w-full items-center gap-2 border-b border-[var(--color-border-subtle)] py-2.5 text-left text-[15px] text-[var(--color-text-secondary)] transition-colors"
       >
         {!isComplete ? (
-          <span className="text-[13px]">
+          <span className="inline-flex items-center gap-2 text-[13px]">
+            <LoadingPixels />
             <Shimmer as="span" duration={2} spread={3} className="font-medium">{`${statusLabel}，用时 ${displayDurationText}`}</Shimmer>
           </span>
         ) : (

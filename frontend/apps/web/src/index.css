@@ -120,6 +120,29 @@ body,
   animation: soft-pulse 1.4s ease-in-out infinite;
 }
 
+/* ZCode 桌面端最新的思考 loading 图标：3×3 像素块按顺时针依次点亮（中心块保持静止）
+   像素块用 bg-current 跟随文字前景色，浅色主题显示深色像素、深色主题显示浅色像素 */
+.zcode-loading-pixel {
+  --loading-pixel-peak: 1;
+  animation: zcode-loading-pixel-on 0.65s ease-in-out infinite;
+}
+@keyframes zcode-loading-pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(1);
+  }
+  35% {
+    opacity: var(--loading-pixel-peak, 0.75);
+    transform: scale(1.08);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zcode-loading-pixel {
+    animation: none;
+  }
+}
+
 /* 过程活动按时间线轻柔进入；同一时刻发出的并行调用会短暂错开。 */
 @keyframes process-activity-enter {
   from {
