@@ -64,6 +64,9 @@ export interface ChatPaneProps {
   onDismissProviderWarning?: () => void;
   onOpenSettingsFromWarning?: () => void;
   onDropSession?: (droppedSessionId: string) => void;
+  /** 计划模式开关（参考 ZCode 开源仓库实现）*/
+  planEnabled?: boolean;
+  onPlanEnabledChange?: (enabled: boolean) => void;
   /** 是否已配置可用大模型提供商（Maf Agent 输入框拦截用） */
   isProviderConfigured?: boolean;
   /** 联网搜索开关（Maf Agent 输入框） */
@@ -123,6 +126,8 @@ export function ChatPane({
   providers,
   activeProviderId,
   onSelectProviderModel,
+  planEnabled,
+  onPlanEnabledChange,
 }: ChatPaneProps) {
   const latestTodoActivity = useMemo<Activity | null>(() => {
     const todos = state.activities.filter((activity) => activity.kind === "todo");
@@ -385,6 +390,8 @@ export function ChatPane({
           onSelectProviderModel={onSelectProviderModel}
           permissionMode={permissionMode}
           onPermissionModeChange={onPermissionModeChange}
+          planEnabled={planEnabled}
+          onPlanEnabledChange={onPlanEnabledChange}
           onOpenSettings={onOpenSettings}
           workspaceRoot={workspaceRoot}
           messages={state.messages}

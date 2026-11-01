@@ -820,6 +820,8 @@ export function buildRunParameters(
     permissionMode?: PermissionMode;
     /** 本次运行是否启用联网搜索工具；未开启时模型仅凭自身知识回答。 */
     webSearch?: boolean;
+    /** 计划模式：开启后代理先输出实施计划，待确认后再执行。*/
+    planEnabled?: boolean;
   },
   resume?: Array<{ interruptId: string; status: "resolved" | "cancelled"; payload?: unknown }>,
 ): RunAgentParameters {
@@ -837,6 +839,7 @@ export function buildRunParameters(
       workspaceRoot: options.workspaceRoot,
       permissionMode: options.permissionMode ?? DEFAULT_PERMISSION_MODE,
       webSearch: options.webSearch ?? false,
+      planEnabled: options.planEnabled ?? false,
     },
     ...(resume && resume.length > 0 ? { resume } : {}),
   };

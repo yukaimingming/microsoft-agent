@@ -26,6 +26,8 @@ import {
   Trash2Icon,
   SquarePenIcon,
   ArrowUpIcon,
+  LightbulbIcon,
+  XIcon,
 } from "lucide-react";
 import {
   PromptInput,
@@ -113,6 +115,9 @@ interface ChatInputProps {
   /** 当前会话最近一份待办计划。 */
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
+  /** 计划模式：独立勾选，开启后代理先输出实施计划，待确认后再执行（参考 ZCode 开源仓库实现）。*/
+  planEnabled?: boolean;
+  onPlanEnabledChange?: (enabled: boolean) => void;
   /** 联网搜索开关：开启时本轮运行挂载 web_search 工具 */
   webSearch?: boolean;
   onWebSearchChange?: (value: boolean) => void;
@@ -275,6 +280,8 @@ function ChatInputContent({
   todoActivity,
   permissionMode,
   onPermissionModeChange,
+  planEnabled,
+  onPlanEnabledChange,
   webSearch = false,
   onWebSearchChange,
   isProviderConfigured = true,
@@ -840,6 +847,29 @@ function ChatInputContent({
 
                   {isPermissionDropdownOpen && (
                     <div className="workspace-dropdown-panel composer-menu absolute bottom-full left-0 z-50 mb-2 w-[min(21rem,calc(100vw-2rem))] rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-700/70 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
+                {/* 计划模式：独立勾选，不与权限模式互斥（参考 ZCode 开源仓库 V4ComposerModeControls 实现） */}
+                <button
+                  type="button"
+                  data-testid="plan-mode-toggle"
+                  aria-pressed={planEnabled}
+                  onClick={() => onPlanEnabledChange?.(!planEnabled)}
+                  title="开启后代理先输出实施计划，待确认后再执行"
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors border",
+                    planEnabled
+                      ? "bg-zinc-100 text-zinc-900 border-transparent font-medium dark:bg-[#2f2f35] dark:text-zinc-100"
+                      : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] border border-transparent",
+                  )}
+                >
+                  <LightbulbIcon className={cn("size-5 shrink-0", planEnabled ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500 dark:text-zinc-300")} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium">计划模式</span>
+                    <span className="block text-[11.5px] leading-snug text-zinc-500 dark:text-zinc-400">编辑前先出计划。</span>
+                  </span>
+                  {planEnabled && <CheckIcon className="size-4 shrink-0 text-zinc-900 dark:text-zinc-200" />}
+                </button>
+                <div role="separator" className="my-1 h-px shrink-0 bg-zinc-200 dark:bg-zinc-700/70" />
+
                       {PERMISSION_OPTIONS.map(({ mode, label, description, Icon }) => {
                         const isSelected = permissionMode === mode;
                         const isFull = mode === "full";
@@ -880,6 +910,25 @@ function ChatInputContent({
                     </div>
                   )}
                 </div>
+
+                {/* 计划模式标记：开启后显示，点击关闭（参考 ZCode 开源仓库实现） */}
+                {planEnabled && (
+                  <span data-testid="plan-mode-marker" className="flex shrink-0 items-center gap-1">
+                    <span role="separator" aria-orientation="vertical" className="h-3 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" />
+                    <button
+                      type="button"
+                      data-testid="plan-mode-marker-close"
+                      onClick={() => onPlanEnabledChange?.(false)}
+                      title="取消下一次提交的计划模式"
+                      aria-label="取消计划模式"
+                      className="group/plan composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap"
+                    >
+                      <LightbulbIcon className="size-3.5 shrink-0 group-hover/plan:hidden" />
+                      <XIcon className="hidden size-3.5 shrink-0 group-hover/plan:block" />
+                      <span className="text-[11.5px] font-medium">计划模式</span>
+                    </button>
+                  </span>
+                )}
 
                 {/* 1. 模型选择下拉菜单（支持按厂商分组选择切换） */}
                 <div className="relative shrink-0" ref={modelDropdownRef}>

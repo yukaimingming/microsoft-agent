@@ -352,6 +352,23 @@ export function App() {
     }
   }, [permissionMode]);
 
+  // 计划模式开关：独立于权限模式的勾选（参考 ZCode 开源仓库实现），开启后本轮运行要求代理先输出实施计划。
+  const [planEnabled, setPlanEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("maf_plan_enabled") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("maf_plan_enabled", planEnabled ? "1" : "0");
+    } catch {
+      // 浏览器禁用本地存储时，计划模式仍在当前页面会话内生效。
+    }
+  }, [planEnabled]);
+
   // 联网搜索开关：仅勾选时本轮运行挂载 web_search 工具，否则模型仅凭自身知识回答。
   const [webSearch, setWebSearch] = useState<boolean>(() => {
     try {
@@ -423,9 +440,10 @@ export function App() {
         workspaceRoot: workspaceRoot ?? undefined,
         permissionMode,
         webSearch,
+        planEnabled,
       }, attachments);
     },
-    [canSend, send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode, webSearch],
+    [canSend, send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode, webSearch, planEnabled],
   );
 
   // 新建会话
@@ -561,6 +579,7 @@ export function App() {
           workspaceRoot: workspaceRoot ?? undefined,
           permissionMode,
           webSearch,
+          planEnabled,
         });
       }, 60);
     }
@@ -574,6 +593,7 @@ export function App() {
       workspaceRoot: workspaceRoot ?? undefined,
       permissionMode,
       webSearch,
+      planEnabled,
     });
   };
 
@@ -665,11 +685,12 @@ export function App() {
           workspaceRoot: rightWorkspace ?? undefined,
           permissionMode,
           webSearch,
+          planEnabled,
         },
         attachments,
       );
     },
-    [activeSplitSessionId, canSend, sendToThread, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch],
+    [activeSplitSessionId, canSend, sendToThread, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled],
   );
 
   const handleStopRight = useCallback(() => {
@@ -726,13 +747,14 @@ export function App() {
               workspaceRoot: rightWorkspace ?? undefined,
               permissionMode,
               webSearch,
+              planEnabled,
             },
             activeSplitSessionId,
           );
         }, 60);
       }
     },
-    [activeSplitSessionId, setDecision, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch],
+    [activeSplitSessionId, setDecision, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled],
   );
 
   const handleSubmitDecisionsRight = useCallback((): void => {
@@ -745,10 +767,11 @@ export function App() {
         workspaceRoot: rightWorkspace ?? undefined,
         permissionMode,
         webSearch,
+        planEnabled,
       },
       activeSplitSessionId,
     );
-  }, [activeSplitSessionId, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch]);
+  }, [activeSplitSessionId, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled]);
 
   // 上次关闭前若有分屏会话，启动恢复完成后自动重新拉起右屏（线程不在内存时后台载入，不打乱主屏）
   useEffect(() => {
@@ -883,6 +906,8 @@ export function App() {
               modelStatusKind={modelStatusKind}
               permissionMode={permissionMode}
               onPermissionModeChange={setPermissionMode}
+            planEnabled={planEnabled}
+            onPlanEnabledChange={setPlanEnabled}
               workspaceRoot={workspaceRoot}
               customWorkspaces={customWorkspaces}
               onSelectWorkspace={(path) => {
@@ -942,6 +967,8 @@ export function App() {
                 modelStatusKind={modelStatusKind}
                 permissionMode={permissionMode}
                 onPermissionModeChange={setPermissionMode}
+            planEnabled={planEnabled}
+            onPlanEnabledChange={setPlanEnabled}
                 workspaceRoot={rightWorkspace}
                 customWorkspaces={customWorkspaces}
                 onSelectWorkspace={(path) => {

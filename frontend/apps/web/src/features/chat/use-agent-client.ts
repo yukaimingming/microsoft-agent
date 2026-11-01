@@ -42,6 +42,8 @@ export interface AgentRunOptions {
   permissionMode?: PermissionMode;
   /** 本次运行是否启用联网搜索工具。 */
   webSearch?: boolean;
+  /** 计划模式：开启后代理先输出实施计划，待确认后再执行。*/
+  planEnabled?: boolean;
 }
 
 /** 单个中断的决策类型。 */
