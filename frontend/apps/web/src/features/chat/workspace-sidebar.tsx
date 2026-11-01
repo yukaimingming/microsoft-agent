@@ -82,6 +82,8 @@ interface WorkspaceSidebarProps {
   wechatConnected?: boolean;
   /** 个人助手 ClawBot 扫码/连接状态 */
   wechatStatus?: string;
+  /** 右侧分屏展示的会话 ID（拖拽分屏来源高亮） */
+  splitSessionId?: string | null;
 }
 
 /**
@@ -164,6 +166,7 @@ export function WorkspaceSidebar({
   onOpenWeChatModal,
   wechatConnected = false,
   wechatStatus = "disconnected",
+  splitSessionId,
 }: WorkspaceSidebarProps) {
   // 控制“选择工作区文件夹”弹窗
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
@@ -240,22 +243,32 @@ export function WorkspaceSidebar({
 
   const renderSession = (session: SessionSummary, bucketLabel?: string) => {
     const isActive = session.id === activeSessionId;
+    const isSplit = session.id === splitSessionId;
     const isSessionRunning = runningSessionIds?.includes(session.id) === true;
     const isEditing = editingSessionId === session.id;
 
     return (
       <div
         key={session.id}
+        draggable={!isEditing}
+        onDragStart={(event) => {
+          if (isEditing) return;
+          event.dataTransfer.setData("application/x-deepagent-session", session.id);
+          event.dataTransfer.setData("text/plain", session.id);
+          event.dataTransfer.effectAllowed = "copyMove";
+        }}
         onClick={() => {
           if (!isEditing) onSelectSession(session.id);
         }}
-        className={`group/session sidebar-session-item relative flex items-center justify-between rounded-md px-2.5 py-1.5 text-[13px] cursor-pointer transition-colors ${
-          isActive
+        className={`group/session sidebar-session-item relative flex items-center justify-between rounded-md px-2.5 py-1.5 text-[13px] cursor-grab active:cursor-grabbing transition-colors ${
+          isActive || isSplit
             ? "bg-zinc-800 text-white font-medium shadow-xs border-l-2 border-zinc-200 pl-2"
             : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
         }`}
         data-active={isActive ? "true" : "false"}
+        data-split={isSplit ? "true" : "false"}
         data-session-id={session.id}
+        title="点击切换会话，或按住拖拽分屏并排显示"
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isSessionRunning ? (

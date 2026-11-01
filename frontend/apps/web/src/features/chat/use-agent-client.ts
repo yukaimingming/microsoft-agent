@@ -63,17 +63,18 @@ export interface AgentClient {
   /** 所有已创建的会话状态（含后台会话）。 */
   allStates: Record<string, ClientState>;
   send: (content: string, options: AgentRunOptions, attachments?: Array<FileUIPart & { id: string }>) => Promise<void>;
+  sendToThread: (threadId: string, content: string, options: AgentRunOptions, attachments?: Array<FileUIPart & { id: string }>) => Promise<void>;
   stop: () => Promise<void>;
   stopThread: (threadId: string) => Promise<void>;
-  submitDecisions: (options: AgentRunOptions) => Promise<void>;
+  submitDecisions: (options: AgentRunOptions, targetThreadId?: string) => Promise<void>;
   newThread: (customId?: string) => string;
   setActiveThread: (threadId: string) => void;
   hasThread: (threadId: string) => boolean;
   disposeThread: (threadId: string) => void;
-  loadState: (state: ClientState) => void;
-  setDecision: (interruptId: string, decision: DecisionInput) => void;
+  loadState: (state: ClientState, activate?: boolean) => void;
+  setDecision: (interruptId: string, decision: DecisionInput, targetThreadId?: string) => void;
   restoreCheckpoint: (messageId: string) => void;
-  rollbackBeforeMessage: (messageId: string) => void;
+  rollbackBeforeMessage: (messageId: string, targetThreadId?: string) => void;
   /** 清空指定（或当前）会话的全部消息与活动，保留会话本身与工作区绑定。 */
   clearThread: (threadId?: string) => void;
 }
@@ -617,13 +618,13 @@ export function useAgentClient(serverUrl: string): AgentClient {
     [clearPlayback, serverUrl, setRunningFor, switchActiveThread],
   );
 
-  /** 载入已有会话状态（从本地存储恢复）。 */
+  /** 载入已有会话状态（从本地存储恢复）；activate=false 时仅后台载入，不打乱当前激活会话（分屏右屏用）。 */
   const loadState = useCallback(
-    (incoming: ClientState): void => {
+    (incoming: ClientState, activate = true): void => {
       const threadId = incoming.threadId || cryptoRandomId();
       // 正在后台运行的会话不允许被磁盘快照覆盖，否则会丢掉实时进度。
       if (runningRef.current[threadId]) {
-        switchActiveThread(threadId);
+        if (activate) switchActiveThread(threadId);
         return;
       }
       const normalized = reduceClientEvent(createInitialState(threadId), {
@@ -639,15 +640,15 @@ export function useAgentClient(serverUrl: string): AgentClient {
           ? { id: message.id, role: "user" as const, content: toAguiContent(message.content, message.attachments) }
           : { id: message.id, role: "assistant" as const, content: message.content }),
       );
-      switchActiveThread(threadId);
+      if (activate) switchActiveThread(threadId);
     },
     [getAgent, switchActiveThread],
   );
 
-  /** 提交审批决策，恢复被中断的运行。 */
+  /** 提交审批决策，恢复被中断的运行；targetThreadId 指定时提交到该会话（分屏右屏用）。 */
   const submitDecisions = useCallback(
-    async (options: AgentRunOptions): Promise<void> => {
-      const threadId = activeThreadIdRef.current;
+    async (options: AgentRunOptions, targetThreadId?: string): Promise<void> => {
+      const threadId = targetThreadId ?? activeThreadIdRef.current;
       if (runningRef.current[threadId]) return;
       const current = threadsRef.current[threadId];
       const interrupts = current?.run.interrupts ?? [];
@@ -679,10 +680,10 @@ export function useAgentClient(serverUrl: string): AgentClient {
     [runOnce],
   );
 
-  /** 设置当前激活会话中某个中断的决策。 */
+  /** 设置指定（或当前激活）会话中某个中断的决策。 */
   const setDecision = useCallback(
-    (interruptId: string, decision: DecisionInput): void => {
-      applyActions(activeThreadIdRef.current, [
+    (interruptId: string, decision: DecisionInput, targetThreadId?: string): void => {
+      applyActions(targetThreadId ?? activeThreadIdRef.current, [
         { type: "setDecision", interruptId, decision },
       ]);
     },
@@ -711,10 +712,10 @@ export function useAgentClient(serverUrl: string): AgentClient {
     [applyActions, clearPlayback, getAgent],
   );
 
-  /** 重新编辑前回退：彻底丢弃被编辑消息及后续所有内容，避免产生重复消息。 */
+  /** 重新编辑前回退：彻底丢弃被编辑消息及后续所有内容，避免产生重复消息；targetThreadId 指定时作用于该会话。 */
   const rollbackBeforeMessage = useCallback(
-    (messageId: string): void => {
-      const threadId = activeThreadIdRef.current;
+    (messageId: string, targetThreadId?: string): void => {
+      const threadId = targetThreadId ?? activeThreadIdRef.current;
       clearPlayback(threadId);
       applyActions(threadId, [{ type: "rollbackBeforeMessage", messageId }]);
       const agent = getAgent(threadId);
@@ -839,6 +840,7 @@ export function useAgentClient(serverUrl: string): AgentClient {
     runningThreadIds,
     allStates: threads,
     send,
+    sendToThread,
     stop,
     stopThread,
     submitDecisions,

@@ -182,33 +182,33 @@ html.light,
   --color-surface-3: #f1f5f9;
   --color-border-subtle: #e2e8f0;
   --color-border-strong: #cbd5e1;
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #334155;
-  --color-text-muted: #64748b;
+  --color-text-primary: #000000;
+  --color-text-secondary: #000000;
+  --color-text-muted: #000000;
   --color-state-running: #1d4ed8;
   --color-state-done: #15803d;
   --color-state-warn: #b45309;
   --color-state-error: #b91c1c;
-  --color-foreground: #0f172a;
-  --color-muted-foreground: #64748b;
+  --color-foreground: #000000;
+  --color-muted-foreground: #000000;
   --color-input: #ffffff;
   --color-ring: #cbd5e1;
 
   /* 语义令牌浅色取值：纯白卡片 + 清晰浅灰边框，批准按钮保持亮蓝突出。 */
   --color-background: #ffffff;
   --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
+  --color-card-foreground: #000000;
   --color-primary: #2563eb;
   --color-primary-foreground: #ffffff;
   --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
+  --color-secondary-foreground: #000000;
   --color-accent: #f1f5f9;
-  --color-accent-foreground: #0f172a;
+  --color-accent-foreground: #000000;
   --color-destructive: #dc2626;
   --color-border: #e2e8f0;
   --color-diff-add: #166534;
   --color-diff-delete: #b91c1c;
-  --color-diff-context: #334155;
+  --color-diff-context: #000000;
 }
 
 :root {
@@ -220,7 +220,7 @@ html.light,
 html.light body,
 html.light #root {
   background-color: #ffffff !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 /* 核心容器与布局背景浅色切换：纯白 */
@@ -246,17 +246,19 @@ html.light .bg-\[\#121214\] {
 }
 
 /* 文本颜色切换 */
+/* 文本颜色切换：浅色主题下所有字体统一黑色 */
 html.light .text-zinc-100,
 html.light .text-zinc-200,
-html.light .text-white {
-  color: #0f172a !important;
-}
 html.light .text-zinc-300,
-html.light .text-zinc-400 {
-  color: #334155 !important;
-}
-html.light .text-zinc-500 {
-  color: #64748b !important;
+html.light .text-zinc-400,
+html.light .text-zinc-500,
+html.light .text-zinc-600,
+html.light .text-zinc-700,
+html.light .text-zinc-800,
+html.light .text-zinc-900,
+html.light .text-zinc-950,
+html.light .text-white {
+  color: #000000 !important;
 }
 
 /* 边框切换 */
@@ -280,7 +282,7 @@ html.light .hover\:bg-zinc-900\/60:hover {
 }
 html.light .hover\:text-white:hover,
 html.light .hover\:text-zinc-200:hover {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 /* ================= 侧边栏聊天记录列表浅色模式适配 ================= */
@@ -289,12 +291,12 @@ html.light .sidebar-session-item[data-active="true"],
 html.light .sidebar-session-item.bg-zinc-800,
 html.light .bg-zinc-800 {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   border-color: #e2e8f0 !important;
 }
 html.light .sidebar-session-item[data-active="true"] span,
 html.light .sidebar-session-item[data-active="true"] .truncate {
-  color: #0f172a !important;
+  color: #000000 !important;
   font-weight: 600 !important;
 }
 html.light .sidebar-session-item[data-active="true"] .bg-zinc-200 {
@@ -302,11 +304,11 @@ html.light .sidebar-session-item[data-active="true"] .bg-zinc-200 {
 }
 /* 未选中项：柔和灰字，悬浮时浅白高亮 */
 html.light .sidebar-session-item[data-active="false"] {
-  color: #475569 !important;
+  color: #000000 !important;
 }
 html.light .sidebar-session-item[data-active="false"]:hover {
   background-color: #f8fafc !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .sidebar-session-item[data-active="false"] .border-zinc-500 {
   border-color: #94a3b8 !important;
@@ -317,15 +319,15 @@ html.light .group\/user .bg-zinc-900,
 html.light .group\/user .bg-zinc-900\/90 {
   background-color: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04) !important;
 }
 html.light .group\/user .bg-zinc-900 p,
 html.light .group\/user .bg-zinc-900\/90 p {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .group\/user textarea {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 /* 输入框浅色模式适配：纯白卡片底、精致浅灰外边框、内部无横线、按钮无边框无灰底 */
 html.light .chat-prompt-input,
@@ -337,12 +339,12 @@ html.light [data-slot="prompt-input"] {
 html.light .chat-prompt-input textarea,
 html.light .chat-prompt-textarea,
 html.light [data-slot="prompt-input"] textarea {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .chat-prompt-input textarea::placeholder,
 html.light .chat-prompt-textarea::placeholder,
 html.light [data-slot="prompt-input"] textarea::placeholder {
-  color: #94a3b8 !important;
+  color: #000000 !important;
 }
 
 /* 附件加号按钮：浅色下默认透明无底色无边框，悬浮浅灰高亮 */
@@ -352,12 +354,12 @@ html.light [data-slot="prompt-input"] textarea::placeholder {
   box-shadow: none !important;
 }
 html.light .chat-action-menu-btn {
-  color: #64748b !important;
+  color: #000000 !important;
   background-color: transparent !important;
   border: none !important;
 }
 html.light .chat-action-menu-btn:hover {
-  color: #0f172a !important;
+  color: #000000 !important;
   background-color: #f1f5f9 !important;
 }
 
@@ -410,13 +412,13 @@ html.light .chat-token-usage-dot.bg-emerald-400 {
 html.light [data-testid="workspace-mode-selector"] {
   background-color: #ffffff !important;
   border: none !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light [data-testid="workspace-mode-selector"]:hover {
   background-color: #f8fafc !important;
 }
 html.light [data-testid="workspace-mode-selector"] span {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .workspace-dropdown-panel {
   background-color: #ffffff !important;
@@ -424,22 +426,22 @@ html.light .workspace-dropdown-panel {
   box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
 }
 html.light .workspace-dropdown-panel button {
-  color: #334155 !important;
+  color: #000000 !important;
 }
 html.light .workspace-dropdown-panel button:hover,
 html.light .workspace-dropdown-panel button.bg-\[\#2f2f35\] {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .workspace-dropdown-panel button span {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .workspace-dropdown-panel button svg {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 html.light .workspace-dropdown-panel button:hover svg,
 html.light .workspace-dropdown-panel button.bg-\[\#2f2f35\] svg {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 /* 输入框的权限、模型和思考等级按钮：深浅模式均默认无边框、无灰底，仅 hover 时呈现柔和高亮反馈。 */
@@ -451,32 +453,32 @@ html.light .workspace-dropdown-panel button.bg-\[\#2f2f35\] svg {
   flex-shrink: 0 !important;
 }
 html.light .composer-selector {
-  color: #475569 !important;
+  color: #000000 !important;
   background-color: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
 html.light .composer-selector:hover {
-  color: #0f172a !important;
+  color: #000000 !important;
   background-color: #f1f5f9 !important;
 }
 html.light .composer-menu {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .composer-menu button:not(.bg-\[\#2f2f35\]) {
-  color: #334155 !important;
+  color: #000000 !important;
 }
 html.light .composer-menu button:hover,
 html.light .composer-menu button.bg-\[\#2f2f35\] {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .composer-menu .text-zinc-500,
 html.light .composer-menu .text-zinc-400,
 html.light .composer-menu .text-zinc-600 {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 /* 完全访问权限：在浅色与深色模式下均保持醒目的纯正红色 */
 .composer-menu [data-permission-mode="full"],
@@ -515,14 +517,14 @@ html.light .composer-selector[data-permission-mode="full"] svg {
 }
 html.light .new-chat-sidebar-button {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .new-chat-sidebar-button:hover,
 html.light .sidebar-add-workspace-button:hover {
   background-color: #e2e8f0 !important;
 }
 html.light .sidebar-section-heading {
-  color: #475569 !important;
+  color: #000000 !important;
 }
 
 /* ================= 消息区向下滚动按钮：完全不透明纯黑/纯白 ================= */
@@ -542,7 +544,7 @@ html.light .sidebar-section-heading {
 
 html.light .conversation-scroll-btn {
   background-color: #ffffff !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   border-color: #cbd5e1 !important;
   opacity: 1 !important;
   backdrop-filter: none !important;
@@ -565,7 +567,7 @@ html.light .table-container {
 html.light [data-streamdown="table"],
 html.light .markdown-table-body {
   background-color: #ffffff !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 /* 表格标题/表头（th）：灰白色背景 */
 html.light [data-streamdown="table"] thead,
@@ -575,7 +577,7 @@ html.light .markdown-table-body thead {
 html.light [data-streamdown="table"] th,
 html.light .markdown-table-body th {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   border-bottom: 1px solid #e2e8f0 !important;
   font-weight: 600 !important;
 }
@@ -587,7 +589,7 @@ html.light .markdown-table-body tbody {
 html.light [data-streamdown="table"] td,
 html.light .markdown-table-body td {
   background-color: #ffffff !important;
-  color: #334155 !important;
+  color: #000000 !important;
   border-bottom: 1px solid #f1f5f9 !important;
 }
 /* 悬浮行高亮 */
@@ -597,23 +599,23 @@ html.light .markdown-table-body tr:hover td {
 }
 /* 表格复制/下载按钮 */
 html.light [data-streamdown="table-wrapper"] button {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 html.light [data-streamdown="table-wrapper"] button:hover {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 /* ================= 提示框浅色规范：全灰白底色，彻底消除黑色小三角 ================= */
 html.light [data-slot="tooltip-content"] {
   background-color: #f4f4f5 !important;
   border-color: #e4e4e7 !important;
-  color: #18181b !important;
+  color: #000000 !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
 html.light [data-slot="tooltip-content"] p,
 html.light [data-slot="tooltip-content"] span {
-  color: #18181b !important;
+  color: #000000 !important;
 }
 html.light [data-slot="tooltip-arrow"],
 html.light [data-slot="tooltip-content"] [data-slot="tooltip-arrow"],
@@ -627,7 +629,7 @@ html.light svg[data-slot="tooltip-arrow"] {
 html.light .modal-panel {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
 }
 html.light .modal-header {
@@ -635,7 +637,7 @@ html.light .modal-header {
   border-color: #e2e8f0 !important;
 }
 html.light .modal-header h2 {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 /* 弹窗所有输入框与下拉选择框：纯白底色、清晰浅灰边框、深黑文字 */
 html.light .modal-panel input,
@@ -643,13 +645,13 @@ html.light .modal-panel select,
 html.light .settings-input {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .modal-panel input::placeholder {
-  color: #94a3b8 !important;
+  color: #000000 !important;
 }
 html.light .modal-panel label span {
-  color: #475569 !important;
+  color: #000000 !important;
 }
 /* 可用模型列表卡片外框：纯白背景 */
 html.light .settings-models-box {
@@ -657,7 +659,7 @@ html.light .settings-models-box {
   border-color: #e2e8f0 !important;
 }
 html.light .settings-models-label {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 /* 可用模型列表滚动区域（原 bg-black/60 导致发灰严重）：纯白明亮背景，彻底消除脏灰色 */
 html.light .settings-model-list-scroll {
@@ -667,31 +669,31 @@ html.light .settings-model-list-scroll {
 /* 默认选中的模型项：高雅浅灰背景 + 深黑字体 */
 html.light .settings-model-item.is-default {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .settings-model-item:not(.is-default) {
-  color: #334155 !important;
+  color: #000000 !important;
 }
 html.light .settings-model-item:not(.is-default):hover {
   background-color: #f8fafc !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 /* 默认模型徽章 */
 html.light .settings-default-badge {
   background-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 /* 模型空状态提示 */
 html.light .settings-model-empty {
   background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
-  color: #64748b !important;
+  color: #000000 !important;
 }
 /* “获取远程模型列表”按钮：亮白浅灰高雅按钮，消除重灰 */
 html.light .settings-fetch-models-btn {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .settings-fetch-models-btn:hover {
   background-color: #f1f5f9 !important;
@@ -701,7 +703,7 @@ html.light .settings-fetch-models-btn:hover {
 html.light .settings-add-model-btn {
   background-color: #f1f5f9 !important;
   border: 1px solid #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .settings-add-model-btn:hover {
   background-color: #e2e8f0 !important;
@@ -710,7 +712,7 @@ html.light .settings-add-model-btn:hover {
 html.light .settings-test-btn {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .settings-test-btn:hover {
   background-color: #f1f5f9 !important;
@@ -726,10 +728,10 @@ html.light .settings-save-btn:hover {
 }
 /* 侧边栏会话时间颜色适配 */
 html.light .session-time {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 html.light .sidebar-session-item[data-active="true"] .session-time {
-  color: #475569 !important;
+  color: #000000 !important;
   font-weight: 500 !important;
 }
 
@@ -737,24 +739,24 @@ html.light .sidebar-session-item[data-active="true"] .session-time {
 html.light .context-meter-btn {
   background-color: #f1f5f9 !important;
   border-color: #cbd5e1 !important;
-  color: #334155 !important;
+  color: #000000 !important;
 }
 html.light .context-meter-btn:hover {
   background-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .context-meter-dialog {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
 }
 html.light .context-meter-dialog .text-zinc-200,
 html.light .context-meter-dialog .text-zinc-300 {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light .context-meter-dialog .text-zinc-400 {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 html.light .context-meter-dialog .bg-zinc-800\/80 {
   background-color: #e2e8f0 !important;
@@ -765,10 +767,10 @@ html.light .context-meter-dialog .border-zinc-800\/70 {
 
 /* ================= StatsLine 底栏统计条浅色模式适配 ================= */
 html.light .stats-line {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 html.light .stats-line .text-zinc-700 {
-  color: #cbd5e1 !important;
+  color: #000000 !important;
 }
 
 /* ================= Review 侧边栏与 Tab 栏浅色模式适配 ================= */
@@ -784,25 +786,25 @@ html.light aside .bg-zinc-950 {
 }
 html.light aside .bg-zinc-900 {
   background-color: #ffffff !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light aside select {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light aside input[type="text"] {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light aside input[type="text"]::placeholder {
-  color: #94a3b8 !important;
+  color: #000000 !important;
 }
 html.light aside textarea {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 /* ================= Todo 待办列表组件浅色模式深度适配 ================= */
@@ -810,21 +812,21 @@ html.light .todo-card-container,
 html.light [data-slot="queue"] {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
 }
 
 html.light .todo-card-trigger,
 html.light [data-slot="queue-section-trigger"] {
   background-color: #f1f5f9 !important;
-  color: #1e293b !important;
+  color: #000000 !important;
   border-color: #e2e8f0 !important;
 }
 
 html.light .todo-card-trigger:hover,
 html.light [data-slot="queue-section-trigger"]:hover {
   background-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 html.light .todo-card-item:hover,
@@ -836,25 +838,25 @@ html.light [data-slot="queue-item"]:hover {
 html.light .queued-message-card {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
 }
 
 html.light .queued-message-card svg {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 
 html.light .queued-message-card span {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 html.light .queued-message-card button {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 
 html.light .queued-message-card button:hover {
   background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 /* ================= 排队折叠卡片（背面抽屉卡片样式）深浅双色主题适配 ================= */
@@ -864,15 +866,15 @@ html.light .queued-behind-card {
 }
 
 html.light .queued-behind-card span {
-  color: #334155 !important;
+  color: #000000 !important;
 }
 
 html.light .queued-behind-card button {
-  color: #64748b !important;
+  color: #000000 !important;
 }
 
 html.light .queued-behind-card button:hover {
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 
 html.dark .queued-behind-card {
@@ -1006,7 +1008,7 @@ html.light [data-testid="wechat-refresh-qrcode-btn"],
 html.light [data-testid="wechat-show-qrcode-btn"] {
   background-color: #f1f5f9 !important;
   border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  color: #000000 !important;
 }
 html.light [data-testid="wechat-refresh-qrcode-btn"]:hover,
 html.light [data-testid="wechat-show-qrcode-btn"]:hover {
