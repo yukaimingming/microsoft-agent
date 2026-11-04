@@ -11,6 +11,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   ChevronDownIcon,
+  ChevronRightIcon,
   CheckIcon,
   SettingsIcon,
   BrainIcon,
@@ -49,6 +50,8 @@ import {
 import { DropdownMenuItem } from "../../components/ui/dropdown-menu.js";
 import {
   REASONING_EFFORTS,
+  availableEffortsForModel,
+  isTwoTierModel,
   type Activity,
   type PermissionMode,
   type PublicProvider,
@@ -66,6 +69,28 @@ export interface QueuedMessage {
   id: string;
   text: string;
   attachments: ChatAttachment[];
+}
+
+/** 取指定提供商下某个模型实际支持的思考等级档位。 */
+function getModelSupportedEfforts(
+  modelName: string,
+  provider?: PublicProvider,
+  globalUnsupported?: boolean,
+): readonly ReasoningEffort[] {
+  if (provider?.reasoning?.unsupported || (globalUnsupported && !provider)) {
+    return [];
+  }
+  const modelEfforts = availableEffortsForModel(modelName);
+  if (isTwoTierModel(modelName)) {
+    return modelEfforts;
+  }
+  if (provider?.reasoning?.perModel?.[modelName]) {
+    return provider.reasoning.perModel[modelName];
+  }
+  if (provider?.reasoning?.efforts && provider.reasoning.efforts.length > 0) {
+    return provider.reasoning.efforts.filter((e) => modelEfforts.includes(e));
+  }
+  return modelEfforts;
 }
 
 interface ChatInputProps {
@@ -445,16 +470,64 @@ function ChatInputContent({
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
   const todoCardRef = useRef<HTMLDivElement>(null);
 
-  // 模型下拉菜单状态
+  // 模型与思考等级合并下拉菜单状态
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
-
-  // 思考等级下拉菜单状态
-  const [isEffortDropdownOpen, setIsEffortDropdownOpen] = useState(false);
-  const effortDropdownRef = useRef<HTMLDivElement>(null);
   const [isPermissionDropdownOpen, setIsPermissionDropdownOpen] = useState(false);
   const permissionDropdownRef = useRef<HTMLDivElement>(null);
   const [showFullAccessConfirmation, setShowFullAccessConfirmation] = useState(false);
+
+  // 模型项悬停与思考等级次级子菜单状态
+  const [hoveredModel, setHoveredModel] = useState<{
+    provId?: string;
+    model: string;
+  } | null>(null);
+  const [submenuTop, setSubmenuTop] = useState<number>(0);
+  const submenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleModelMouseEnter = (
+    provId: string | undefined,
+    modelName: string,
+    event: React.MouseEvent<HTMLDivElement>
+  ) => {
+    if (submenuTimerRef.current) {
+      clearTimeout(submenuTimerRef.current);
+      submenuTimerRef.current = null;
+    }
+    const itemEl = event.currentTarget;
+    const parentEl = modelDropdownRef.current;
+    if (parentEl) {
+      const parentRect = parentEl.getBoundingClientRect();
+      const itemRect = itemEl.getBoundingClientRect();
+      setSubmenuTop(Math.max(0, itemRect.top - parentRect.top));
+    }
+    setHoveredModel({ provId, model: modelName });
+  };
+
+  const handleModelMouseLeave = () => {
+    submenuTimerRef.current = setTimeout(() => {
+      setHoveredModel(null);
+    }, 120);
+  };
+
+  const handleSubmenuMouseEnter = () => {
+    if (submenuTimerRef.current) {
+      clearTimeout(submenuTimerRef.current);
+      submenuTimerRef.current = null;
+    }
+  };
+
+  const handleSubmenuMouseLeave = () => {
+    submenuTimerRef.current = setTimeout(() => {
+      setHoveredModel(null);
+    }, 120);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
+    };
+  }, []);
 
   const selectPermissionMode = (mode: PermissionMode) => {
     setIsPermissionDropdownOpen(false);
@@ -479,9 +552,7 @@ function ChatInputContent({
       }
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(target)) {
         setIsModelDropdownOpen(false);
-      }
-      if (effortDropdownRef.current && !effortDropdownRef.current.contains(target)) {
-        setIsEffortDropdownOpen(false);
+        setHoveredModel(null);
       }
       if (permissionDropdownRef.current && !permissionDropdownRef.current.contains(target)) {
         setIsPermissionDropdownOpen(false);
@@ -554,7 +625,6 @@ function ChatInputContent({
                   setIsWorkspaceDropdownOpen((v) => !v);
                   setIsTodoExpanded(false);
                   setIsModelDropdownOpen(false);
-                  setIsEffortDropdownOpen(false);
                 }}
                 className="group inline-flex items-center gap-1.5 rounded-xl bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/80 px-2.5 py-1 text-[13px] font-medium text-zinc-800 dark:text-zinc-100 transition-colors select-none max-w-[280px] border-0 outline-none"
                 title={isDirectChat ? "当前为直接聊天模式（无工作区）" : `当前工作区：${currentWorkspacePath}`}
@@ -658,7 +728,6 @@ function ChatInputContent({
                   setIsTodoExpanded((v) => !v);
                   setIsWorkspaceDropdownOpen(false);
                   setIsModelDropdownOpen(false);
-                  setIsEffortDropdownOpen(false);
                   setIsPermissionDropdownOpen(false);
                 }}
                 onClose={() => setIsTodoExpanded(false)}
@@ -825,7 +894,6 @@ function ChatInputContent({
                     onClick={() => {
                       setIsPermissionDropdownOpen((open) => !open);
                       setIsModelDropdownOpen(false);
-                      setIsEffortDropdownOpen(false);
                     }}
                     className={cn(
                       "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0",
@@ -930,24 +998,34 @@ function ChatInputContent({
                   </span>
                 )}
 
-                {/* 1. 模型选择下拉菜单（支持按厂商分组选择切换） */}
+                {/* 模型与思考等级合并下拉菜单 */}
                 <div className="relative shrink-0" ref={modelDropdownRef}>
                   <button
                     type="button"
-                    data-testid="model-selector-trigger"
+                    data-testid="model-effort-selector-trigger"
                     onClick={() => {
                       setIsModelDropdownOpen((v) => !v);
-                      setIsEffortDropdownOpen(false);
+                      setIsWorkspaceDropdownOpen(false);
                       setIsPermissionDropdownOpen(false);
+                      setIsTodoExpanded(false);
                     }}
                     className="composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2.5 py-1 text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 transition-colors dark:hover:bg-zinc-800/70 dark:hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0"
-                    title="点击按厂商分组切换模型"
+                    title={
+                      reasoningUnsupported
+                        ? "点击切换模型（当前模型不支持调节思考等级）"
+                        : fallbackApplied
+                          ? `点击切换模型（当前模型不支持「${requestedEffort === "high" ? "高" : requestedEffort === "medium" ? "中" : "低"}」档位，已自动降级至「${effortLabel}」）`
+                          : "点击切换模型与思考等级"
+                    }
                   >
+                    {/* 模型状态圆点 */}
                     <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+
+                    {/* 厂商与模型名（触发按钮仅显示模型，不显示思考等级） */}
                     {(() => {
                       const activeProv = providers.find((p) => p.id === activeProviderId);
                       return (
-                        <span className="font-mono truncate max-w-[140px] sm:max-w-[210px] text-[11.5px] flex items-center gap-1">
+                        <span className="font-mono truncate max-w-[140px] sm:max-w-[200px] text-[11.5px] flex items-center gap-1">
                           {activeProv ? (
                             <>
                               <span className="font-sans text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0">
@@ -960,31 +1038,48 @@ function ChatInputContent({
                         </span>
                       );
                     })()}
-                    <ChevronDownIcon className={cn("size-3 text-zinc-400 dark:text-zinc-500 shrink-0 ml-0.5 transition-transform", isModelDropdownOpen && "rotate-180")} />
+
+                    {/* 思考等级降级指示圆点 */}
+                    {fallbackApplied && (
+                      <span
+                        className="size-1.5 rounded-full bg-amber-400 shrink-0"
+                        aria-label="推理强度已降级"
+                      />
+                    )}
+
+                    {/* 右侧 ChevronDown */}
+                    <ChevronDownIcon
+                      className={cn(
+                        "size-3 text-zinc-400 dark:text-zinc-500 shrink-0 ml-0.5 transition-transform",
+                        isModelDropdownOpen && "rotate-180"
+                      )}
+                    />
                   </button>
 
-                  {/* 弹出式模型下拉列表（按厂商分组展示） */}
+                  {/* 弹出式合并下拉面板（模型列表，悬停右侧滑出思考等级子菜单） */}
                   {isModelDropdownOpen && (
                     <div
                       data-testid="model-selector-dropdown"
-                      className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-72 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100"
+                      className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-72 sm:w-80 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100"
                     >
                       {(() => {
                         const groupedProviders = providers.filter(
-                          (p) => p.enabled && p.models && p.models.length > 0,
+                          (p) => p.enabled && p.models && p.models.length > 0
                         );
                         const totalGroupedModels = groupedProviders.reduce(
                           (acc, p) => acc + p.models.length,
-                          0,
+                          0
                         );
 
                         return (
                           <>
-                            <div className="px-2 py-1 text-[11px] font-medium text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                              <span>按厂商选择模型</span>
+                            <div className="px-2 py-1 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                              <span>模型</span>
                               {(totalGroupedModels > 0 || availableModels.length > 0) && (
-                                <span>
-                                  ({groupedProviders.length > 0 ? `${groupedProviders.length} 厂商 · ${totalGroupedModels}` : availableModels.length})
+                                <span className="font-normal text-[10.5px]">
+                                  {groupedProviders.length > 0
+                                    ? `${groupedProviders.length} 厂商 · ${totalGroupedModels} 模型`
+                                    : `${availableModels.length} 模型`}
                                 </span>
                               )}
                             </div>
@@ -999,30 +1094,38 @@ function ChatInputContent({
                                       data-testid={`provider-group-${prov.id}`}
                                       className="space-y-0.5"
                                     >
+                                      {/* 厂商分组标题栏 */}
                                       <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50/80 dark:bg-zinc-900/50 rounded-md">
                                         <span className="truncate">{prov.label}</span>
                                         <span
                                           className={cn(
                                             "text-[10px] px-1.5 py-0.2 rounded font-normal shrink-0",
                                             isCurrentProvider
-                                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium"
                                               : prov.hasApiKey
                                                 ? "bg-zinc-200/70 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                                                : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                                                : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                                           )}
                                         >
                                           {isCurrentProvider ? "当前厂商" : prov.hasApiKey ? "已就绪" : "未填 Key"}
                                         </span>
                                       </div>
 
+                                      {/* 模型单列列表 */}
                                       <div className="space-y-0.5 pl-1">
                                         {prov.models.map((m) => {
                                           const isSelected = isCurrentProvider && currentModel === m;
+                                          const isHovered =
+                                            hoveredModel?.provId === prov.id && hoveredModel?.model === m;
+
                                           return (
-                                            <button
+                                            <div
                                               key={`${prov.id}:${m}`}
-                                              type="button"
                                               data-testid={`model-option-${prov.id}-${m}`}
+                                              role="button"
+                                              tabIndex={0}
+                                              onMouseEnter={(e) => handleModelMouseEnter(prov.id, m, e)}
+                                              onMouseLeave={handleModelMouseLeave}
                                               onClick={() => {
                                                 if (onSelectProviderModel) {
                                                   onSelectProviderModel(prov.id, m);
@@ -1030,18 +1133,45 @@ function ChatInputContent({
                                                   onSelectModel?.(m);
                                                 }
                                                 setIsModelDropdownOpen(false);
+                                                setHoveredModel(null);
                                               }}
-                                              className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-mono text-left transition-colors ${
+                                              onKeyDown={(e) => {
+                                                if (e.key === "Enter" || e.key === " ") {
+                                                  e.preventDefault();
+                                                  if (onSelectProviderModel) {
+                                                    onSelectProviderModel(prov.id, m);
+                                                  } else {
+                                                    onSelectModel?.(m);
+                                                  }
+                                                  setIsModelDropdownOpen(false);
+                                                  setHoveredModel(null);
+                                                }
+                                              }}
+                                              className={cn(
+                                                "group/item flex items-center justify-between px-2.5 py-1.5 rounded-md text-[12px] font-mono text-left cursor-pointer transition-colors select-none",
                                                 isSelected
                                                   ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
-                                                  : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
-                                              }`}
+                                                  : isHovered
+                                                    ? "bg-zinc-100/70 text-zinc-900 dark:bg-[#2a2a2f] dark:text-zinc-100"
+                                                    : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
+                                              )}
                                             >
                                               <span className="truncate">{m}</span>
-                                              {isSelected && (
-                                                <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0 ml-1" />
-                                              )}
-                                            </button>
+
+                                              <div className="flex items-center gap-1 shrink-0 ml-2">
+                                                {isSelected && (
+                                                  <CheckIcon className="size-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                                                )}
+                                                <ChevronRightIcon
+                                                  className={cn(
+                                                    "size-3 transition-colors",
+                                                    isHovered
+                                                      ? "text-zinc-600 dark:text-zinc-200"
+                                                      : "text-zinc-400/60 dark:text-zinc-500/60 group-hover/item:text-zinc-600 dark:group-hover/item:text-zinc-300"
+                                                  )}
+                                                />
+                                              </div>
+                                            </div>
                                           );
                                         })}
                                       </div>
@@ -1053,27 +1183,62 @@ function ChatInputContent({
                                   暂无可用模型，请在设置中配置
                                 </div>
                               ) : (
-                                availableModels.map((m) => {
-                                  const isSelected = currentModel === m;
-                                  return (
-                                    <button
-                                      key={m}
-                                      type="button"
-                                      onClick={() => {
-                                        onSelectModel?.(m);
-                                        setIsModelDropdownOpen(false);
-                                      }}
-                                      className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-mono text-left transition-colors ${
-                                        isSelected
-                                          ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
-                                          : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
-                                      }`}
-                                    >
-                                      <span className="truncate">{m}</span>
-                                      {isSelected && <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0" />}
-                                    </button>
-                                  );
-                                })
+                                /* availableModels 兜底 */
+                                <div className="space-y-0.5">
+                                  {availableModels.map((m) => {
+                                    const isSelected = currentModel === m;
+                                    const isHovered =
+                                      hoveredModel?.model === m && !hoveredModel?.provId;
+
+                                    return (
+                                      <div
+                                        key={m}
+                                        data-testid={`model-option-${m}`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onMouseEnter={(e) => handleModelMouseEnter(undefined, m, e)}
+                                        onMouseLeave={handleModelMouseLeave}
+                                        onClick={() => {
+                                          onSelectModel?.(m);
+                                          setIsModelDropdownOpen(false);
+                                          setHoveredModel(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            onSelectModel?.(m);
+                                            setIsModelDropdownOpen(false);
+                                            setHoveredModel(null);
+                                          }
+                                        }}
+                                        className={cn(
+                                          "group/item flex items-center justify-between px-2.5 py-1.5 rounded-md text-[12px] font-mono text-left cursor-pointer transition-colors select-none",
+                                          isSelected
+                                            ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                            : isHovered
+                                              ? "bg-zinc-100/70 text-zinc-900 dark:bg-[#2a2a2f] dark:text-zinc-100"
+                                              : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
+                                        )}
+                                      >
+                                        <span className="truncate">{m}</span>
+
+                                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                                          {isSelected && (
+                                            <CheckIcon className="size-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                                          )}
+                                          <ChevronRightIcon
+                                            className={cn(
+                                              "size-3 transition-colors",
+                                              isHovered
+                                                ? "text-zinc-600 dark:text-zinc-200"
+                                                : "text-zinc-400/60 dark:text-zinc-500/60 group-hover/item:text-zinc-600 dark:group-hover/item:text-zinc-300"
+                                            )}
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               )}
                             </div>
                           </>
@@ -1086,6 +1251,7 @@ function ChatInputContent({
                             type="button"
                             onClick={() => {
                               setIsModelDropdownOpen(false);
+                              setHoveredModel(null);
                               onOpenSettings();
                             }}
                             className="flex w-full items-center gap-1.5 px-2 py-1 text-[11.5px] text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-900 rounded transition-colors"
@@ -1095,104 +1261,123 @@ function ChatInputContent({
                           </button>
                         </div>
                       )}
-                    </div>
-                  )}
-                </div>
 
+                      {/* 鼠标悬停模型项时向右滑出的推理等级次级子菜单 */}
+                      {hoveredModel && (
+                        <div
+                          data-testid="effort-submenu"
+                          onMouseEnter={handleSubmenuMouseEnter}
+                          onMouseLeave={handleSubmenuMouseLeave}
+                          style={{ top: `${submenuTop}px` }}
+                          className="absolute left-full ml-1.5 z-60 w-44 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 animate-in fade-in zoom-in-95 duration-100"
+                        >
+                          {/* 桥接透明区域，防止斜向移动鼠标至子菜单时失焦 */}
+                          <div className="absolute -left-2 top-0 bottom-0 w-2" />
 
-                {/* 2. 思考等级下拉选择样式 */}
-                <div className="relative shrink-0" ref={effortDropdownRef}>
-                  <button
-                    type="button"
-                    disabled={reasoningUnsupported}
-                    onClick={() => {
-                      setIsEffortDropdownOpen((v) => !v);
-                      setIsModelDropdownOpen(false);
-                      setIsPermissionDropdownOpen(false);
-                    }}
-                    className={cn(
-                      "composer-selector flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800/70 dark:hover:text-white border-0 border-none outline-none focus:outline-none shadow-none whitespace-nowrap shrink-0",
-                      reasoningUnsupported ? "opacity-40 cursor-not-allowed text-zinc-400 dark:text-zinc-600" : "text-zinc-700 dark:text-zinc-300"
-                    )}
-                    title={
-                      reasoningUnsupported
-                        ? "当前模型不支持调节思考等级"
-                        : fallbackApplied
-                          ? `已自动降级：当前模型不支持「${requestedEffort === "high" ? "高" : requestedEffort === "medium" ? "中" : "低"}」档位，实际使用「${effortLabel}」`
-                          : "点击切换思考等级"
-                    }
-                  >
-                    <BrainIcon className="size-3 text-zinc-500 dark:text-zinc-400 shrink-0" />
-                    <span className="text-[11.5px] font-medium">
-                      思考: {reasoningUnsupported ? "无" : effortLabel}
-                    </span>
-                    {fallbackApplied && (
-                      <span
-                        className="size-1.5 rounded-full bg-amber-400 shrink-0"
-                        aria-label="推理强度已降级"
-                      />
-                    )}
-                    <ChevronDownIcon className={cn("size-3 text-zinc-400 dark:text-zinc-500 shrink-0 ml-0.5 transition-transform", isEffortDropdownOpen && "rotate-180")} />
-                  </button>
+                          <div className="px-2 py-1 text-[10.5px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60 pb-1 mb-1">
+                            <span className="flex items-center gap-1">
+                              <BrainIcon className="size-3 text-zinc-400 shrink-0" />
+                              <span>思考等级</span>
+                            </span>
+                            <span className="font-mono text-[10px] text-zinc-400 truncate max-w-[70px]">
+                              {hoveredModel.model}
+                            </span>
+                          </div>
 
-                  {/* 弹出式思考等级下拉列表 */}
-                  {isEffortDropdownOpen && (
-                    <div className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-44 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100">
-                      <div className="px-2 py-1 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
-                        思考等级 / 推理强度
-                      </div>
+                          <div className="space-y-0.5">
+                            {REASONING_EFFORTS.map((opt) => {
+                              const isHoveredModelActive =
+                                (hoveredModel.provId ? hoveredModel.provId === activeProviderId : true) &&
+                                currentModel === hoveredModel.model;
 
-                      {fallbackApplied && (
-                        <div className="mx-1 mb-1 rounded-md bg-amber-400/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-600 dark:text-amber-300/90">
-                          已自动降级：当前模型不支持
-                          「{requestedEffort === "high" ? "高" : requestedEffort === "medium" ? "中" : "低"}」
-                          档位，本次运行实际使用「{effortLabel}」。
+                              const activeProvObj = hoveredModel.provId
+                                ? providers.find((p) => p.id === hoveredModel.provId)
+                                : undefined;
+
+                              const modelSupported = isHoveredModelActive
+                                ? (reasoningUnsupported ? [] : supportedEfforts)
+                                : getModelSupportedEfforts(
+                                    hoveredModel.model,
+                                    activeProvObj,
+                                    reasoningUnsupported
+                                  );
+
+                              const supported = modelSupported.includes(opt);
+                              const isSelected = isHoveredModelActive && effort === opt;
+                              const optTitle =
+                                opt === "high" ? "高 (high)" : opt === "medium" ? "中 (medium)" : "低 (low)";
+                              const optDesc =
+                                opt === "high" ? "深度思考" : opt === "medium" ? "均衡推理" : "快速响应";
+
+                              if (!supported) {
+                                return (
+                                  <div
+                                    key={opt}
+                                    data-testid={`effort-option-${opt}`}
+                                    className="flex items-center justify-between px-2 py-1.5 rounded-md text-[11.5px] text-zinc-400 dark:text-zinc-600 cursor-not-allowed select-none line-through opacity-50"
+                                    title="当前模型不支持此档位"
+                                  >
+                                    <span>{optTitle}</span>
+                                    <span className="text-[9.5px] font-normal no-underline">不支持</span>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  data-testid={`effort-option-${opt}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!isHoveredModelActive) {
+                                      if (hoveredModel.provId && onSelectProviderModel) {
+                                        onSelectProviderModel(hoveredModel.provId, hoveredModel.model);
+                                      } else {
+                                        onSelectModel?.(hoveredModel.model);
+                                      }
+                                    }
+                                    onEffortChange(opt);
+                                    setIsModelDropdownOpen(false);
+                                    setHoveredModel(null);
+                                  }}
+                                  className={cn(
+                                    "flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[11.5px] text-left transition-colors",
+                                    isSelected
+                                      ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
+                                      : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
+                                  )}
+                                >
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="truncate">{optTitle}</span>
+                                    <span className="text-[9.5px] text-zinc-400 dark:text-zinc-500 font-normal">
+                                      {optDesc}
+                                    </span>
+                                  </div>
+                                  {isSelected && (
+                                    <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0 ml-1" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* 降级提示（针对当前选中的模型） */}
+                          {(() => {
+                            const isHoveredModelActive =
+                              (hoveredModel.provId ? hoveredModel.provId === activeProviderId : true) &&
+                              currentModel === hoveredModel.model;
+                            if (isHoveredModelActive && fallbackApplied) {
+                              return (
+                                <div className="mt-1 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[9.5px] leading-tight text-amber-600 dark:text-amber-400/90 px-1">
+                                  已降级至「{effortLabel}」
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       )}
-
-                      <div className="space-y-0.5 my-1">
-                        {REASONING_EFFORTS.map((option) => {
-                          const supported = supportedEfforts.includes(option);
-                          const isSelected = effort === option;
-                          const title = option === "high" ? "高 (high)" : option === "medium" ? "中 (medium)" : "低 (low)";
-                          const desc = option === "high" ? "深度多步思考" : option === "medium" ? "均衡推理与速度" : "快速响应思考";
-
-                          if (!supported) {
-                            return (
-                              <div
-                                key={option}
-                                className="flex items-center justify-between px-2 py-1.5 rounded-md text-[11.5px] text-zinc-400 dark:text-zinc-600 cursor-not-allowed select-none"
-                                title="当前模型不支持此档位（如 step-3.5-flash-2603 仅限低与高）"
-                              >
-                                <span>{title}</span>
-                                <span className="text-[10px] text-zinc-400 dark:text-zinc-600">不支持</span>
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={() => {
-                                onEffortChange(option);
-                                setIsEffortDropdownOpen(false);
-                              }}
-                              className={`flex w-full items-center justify-between px-2 py-1.5 rounded-md text-[12px] text-left transition-colors ${
-                                isSelected
-                                  ? "bg-zinc-100 text-zinc-900 dark:bg-[#2f2f35] dark:text-white font-medium"
-                                  : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-[#2f2f35] dark:hover:text-zinc-100"
-                              }`}
-                            >
-                              <div className="flex flex-col">
-                                <span>{title}</span>
-                                <span className="text-[10.5px] text-zinc-500 font-normal">{desc}</span>
-                              </div>
-                              {isSelected && <CheckIcon className="size-3 text-emerald-500 dark:text-emerald-400 shrink-0 ml-1" />}
-                            </button>
-                          );
-                        })}
-                      </div>
                     </div>
                   )}
                 </div>

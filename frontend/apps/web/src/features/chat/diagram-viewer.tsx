@@ -16,6 +16,7 @@ import {
   RefreshCw,
   AlertCircle,
   Network,
+  Scan,
 } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { sanitizeMermaid, repairMermaid } from "./mermaid-sanitizer.js";
@@ -81,13 +82,27 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
   const [renderError, setRenderError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const uniqueId = useId().replace(/:/g, "_");
   const renderCounter = useRef(0);
+
+  const isDraggingRef = useRef(false);
+  const hasMovedRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0, startOffsetX: 0, startOffsetY: 0 });
+  const stateRef = useRef({ zoom: 1, offset: { x: 0, y: 0 } });
+
+  // 同步状态引用，避免事件闭包 stale state
+  useEffect(() => {
+    stateRef.current = { zoom, offset };
+  }, [zoom, offset]);
 
   // 监听主题变化（深色 / 浅色）
   const [isDark, setIsDark] = useState(() => {
@@ -190,6 +205,91 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
     [isDark, uniqueId]
   );
 
+  // 计算 contain 适配比例与重置居中
+  const fitToViewport = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const svg = container.querySelector("svg");
+    if (!svg) return;
+
+    let svgWidth = 800;
+    let svgHeight = 600;
+
+    const vb = svg.viewBox?.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      svgWidth = vb.width;
+      svgHeight = vb.height;
+    } else {
+      const vbAttr = svg.getAttribute("viewBox");
+      if (vbAttr) {
+        const parts = vbAttr.trim().split(/[\s,]+/).map(Number);
+        const w = parts[2];
+        const h = parts[3];
+        if (parts.length === 4 && typeof w === "number" && w > 0 && typeof h === "number" && h > 0) {
+          svgWidth = w;
+          svgHeight = h;
+        }
+      } else {
+        const rect = svg.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          svgWidth = rect.width;
+          svgHeight = rect.height;
+        }
+      }
+    }
+
+    // 视口容器可用空间（减去 padding，p-6 对应上下各 24px、左右各 24px）
+    const paddingX = 48;
+    const paddingY = 48;
+    const availWidth = Math.max(container.clientWidth - paddingX, 40);
+    const availHeight = Math.max(container.clientHeight - paddingY, 40);
+
+    setNaturalSize({ width: svgWidth, height: svgHeight });
+
+    const fitZoom = Math.min(availWidth / svgWidth, availHeight / svgHeight);
+    // 初始/自适应取 min(fitZoom, 1)，下限 0.1
+    const nextZoom = Math.max(Math.min(fitZoom, 1), 0.1);
+    const nextOffset = { x: 0, y: 0 };
+
+    stateRef.current = { zoom: nextZoom, offset: nextOffset };
+    setZoom(nextZoom);
+    setOffset(nextOffset);
+  }, []);
+
+  // 渲染成功后（含 sanitizeMermaid 常规渲染与 repairMermaid 激进重试两条路径）测量真实 SVG 进行自适应 contain 适配
+  useEffect(() => {
+    if (!svgHtml) return;
+    const rafId = requestAnimationFrame(() => {
+      fitToViewport();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [svgHtml, fitToViewport]);
+
+  // 用 ResizeObserver 监听视口容器尺寸变化，全屏切换或容器形变后自动重新适配
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    let lastWidth = container.clientWidth;
+    let lastHeight = container.clientHeight;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (Math.abs(width - lastWidth) > 3 || Math.abs(height - lastHeight) > 3) {
+          lastWidth = width;
+          lastHeight = height;
+          requestAnimationFrame(() => {
+            fitToViewport();
+          });
+        }
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [fitToViewport]);
+
   useEffect(() => {
     setCode(initialCode);
     renderDiagram(initialCode);
@@ -199,10 +299,134 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
     renderDiagram(code);
   }, [isDark, renderDiagram]);
 
-  // 缩放操作
-  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.15, 3.0));
-  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.15, 0.3));
-  const handleZoomReset = () => setZoom(1);
+  // 缩放操作（以视口中心为基准平滑缩放，最大上限提高到 6.0）
+  const handleZoomIn = () => {
+    const nextZoom = Math.min(stateRef.current.zoom + 0.2, 6.0);
+    const ratio = nextZoom / stateRef.current.zoom;
+    const nextOffset = {
+      x: stateRef.current.offset.x * ratio,
+      y: stateRef.current.offset.y * ratio,
+    };
+    stateRef.current = { zoom: nextZoom, offset: nextOffset };
+    setZoom(nextZoom);
+    setOffset(nextOffset);
+  };
+
+  const handleZoomOut = () => {
+    const nextZoom = Math.max(stateRef.current.zoom - 0.2, 0.2);
+    const ratio = nextZoom / stateRef.current.zoom;
+    const nextOffset = {
+      x: stateRef.current.offset.x * ratio,
+      y: stateRef.current.offset.y * ratio,
+    };
+    stateRef.current = { zoom: nextZoom, offset: nextOffset };
+    setZoom(nextZoom);
+    setOffset(nextOffset);
+  };
+
+  const handleZoomReset = () => {
+    stateRef.current = { zoom: 1, offset: { x: 0, y: 0 } };
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
+  // 鼠标拖拽平移开始
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // 仅响应鼠标左键
+    e.preventDefault(); // 阻止默认的文字选择
+
+    isDraggingRef.current = true;
+    hasMovedRef.current = false;
+    setIsDragging(true);
+
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      startOffsetX: stateRef.current.offset.x,
+      startOffsetY: stateRef.current.offset.y,
+    };
+  };
+
+  // 全局鼠标平移与释放监听，避免甩出容器时丢失状态
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasMovedRef.current = true;
+      }
+
+      const nextOffset = {
+        x: dragStartRef.current.startOffsetX + dx,
+        y: dragStartRef.current.startOffsetY + dy,
+      };
+      stateRef.current.offset = nextOffset;
+      setOffset(nextOffset);
+    };
+
+    const handleMouseUp = () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+
+    // 如果发生了拖拽位移，捕获拦截后续 click 事件，避免误触发点击行为
+    const handleClickCapture = (e: MouseEvent) => {
+      if (hasMovedRef.current) {
+        e.stopPropagation();
+        e.preventDefault();
+        hasMovedRef.current = false;
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("click", handleClickCapture, true);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("click", handleClickCapture, true);
+    };
+  }, []);
+
+  // 滚轮缩放监听：以当前鼠标指针位置为锚点进行精准中心缩放
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault(); // 阻止浏览器外部页面滚动
+
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const mouseRelX = mouseX - rect.width / 2;
+      const mouseRelY = mouseY - rect.height / 2;
+
+      const { zoom: currentZoom, offset: currentOffset } = stateRef.current;
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      const nextZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.2), 6.0);
+      if (Math.abs(nextZoom - currentZoom) < 0.001) return;
+
+      const ratio = nextZoom / currentZoom;
+      const nextOffset = {
+        x: mouseRelX - (mouseRelX - currentOffset.x) * ratio,
+        y: mouseRelY - (mouseRelY - currentOffset.y) * ratio,
+      };
+
+      stateRef.current = { zoom: nextZoom, offset: nextOffset };
+      setZoom(nextZoom);
+      setOffset(nextOffset);
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
 
   // 复制代码
   const handleCopy = async () => {
@@ -235,36 +459,79 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // 导出 PNG
+  // 导出 PNG（基于克隆真实 viewBox 尺寸与 Data URL 避免 Canvas Tainted）
   const handleExportPng = () => {
     if (!svgHtml || isExporting) return;
+    const container = containerRef.current;
+    const svgElement = container?.querySelector("svg");
+    if (!svgElement) return;
+
     setIsExporting(true);
+    setExportFailed(false);
+
+    const notifyError = () => {
+      setIsExporting(false);
+      setExportFailed(true);
+      setTimeout(() => setExportFailed(false), 2500);
+    };
 
     try {
-      const svgBlob = new Blob([svgHtml], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(svgBlob);
-      const img = new Image();
+      // 1. 导出前克隆当前 SVG：把根节点 width/height 设置为 viewBox 的真实宽高，并移除根节点上的 inline style
+      const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
 
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const scale = 2; // 2x 超清导出
-        canvas.width = (img.width || 800) * scale;
-        canvas.height = (img.height || 600) * scale;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          setIsExporting(false);
-          URL.revokeObjectURL(url);
-          return;
+      let vbWidth = 800;
+      let vbHeight = 600;
+      const vb = clonedSvg.viewBox?.baseVal;
+      if (vb && vb.width > 0 && vb.height > 0) {
+        vbWidth = vb.width;
+        vbHeight = vb.height;
+      } else {
+        const vbAttr = clonedSvg.getAttribute("viewBox");
+        if (vbAttr) {
+          const parts = vbAttr.trim().split(/[\s,]+/).map(Number);
+          const w = parts[2];
+          const h = parts[3];
+          if (parts.length === 4 && typeof w === "number" && w > 0 && typeof h === "number" && h > 0) {
+            vbWidth = w;
+            vbHeight = h;
+          }
         }
+      }
 
-        // 填充背景底色（适配浅色纯白 / 深色黑底）
-        ctx.fillStyle = isDark ? "#09090b" : "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      clonedSvg.setAttribute("width", String(vbWidth));
+      clonedSvg.setAttribute("height", String(vbHeight));
+      clonedSvg.removeAttribute("style");
 
-        canvas.toBlob((blob) => {
-          if (blob) {
+      // 2. 用 XMLSerializer 序列化，再以 data URL 作为 img.src（data URL 不会污染 canvas，blob URL 会）
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(clonedSvg);
+      const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+
+      const img = new Image();
+      img.onload = () => {
+        try {
+          // 3. canvas 按 viewBox 宽高 × 2 创建，先按当前主题填背景色再 drawImage
+          const canvas = document.createElement("canvas");
+          const scale = 2; // 2x 超清导出
+          canvas.width = vbWidth * scale;
+          canvas.height = vbHeight * scale;
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            notifyError();
+            return;
+          }
+
+          ctx.fillStyle = isDark ? "#09090b" : "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // 4. canvas.toBlob 成功后用 a[download] 触发下载，URL 用完再 revoke
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              notifyError();
+              return;
+            }
             const pngUrl = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = pngUrl;
@@ -273,20 +540,23 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(pngUrl);
-          }
-          setIsExporting(false);
-          URL.revokeObjectURL(url);
-        }, "image/png");
+            setIsExporting(false);
+          }, "image/png");
+        } catch (err) {
+          console.error("Canvas 绘制或导出异常:", err);
+          notifyError();
+        }
       };
 
-      img.onerror = () => {
-        setIsExporting(false);
-        URL.revokeObjectURL(url);
+      img.onerror = (err) => {
+        console.error("SVG 图像转为图片加载失败:", err);
+        notifyError();
       };
 
-      img.src = url;
-    } catch {
-      setIsExporting(false);
+      img.src = dataUrl;
+    } catch (err) {
+      console.error("PNG 导出前置准备失败:", err);
+      notifyError();
     }
   };
 
@@ -330,32 +600,45 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
 
           {/* 缩放控制器（仅在预览状态显示） */}
           {!isEditing && (
-            <div className="flex items-center rounded-md border border-zinc-200/80 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80 px-1">
+            <div className="flex items-center gap-1">
+              <div className="flex items-center rounded-md border border-zinc-200/80 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80 px-1">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  disabled={zoom <= 0.2}
+                  className="p-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 disabled:opacity-40 cursor-pointer"
+                  title="缩小 (Zoom Out)"
+                >
+                  <ZoomOut className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomReset}
+                  className="px-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
+                  title="重置缩放 (100%)"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  disabled={zoom >= 6.0}
+                  className="p-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 disabled:opacity-40 cursor-pointer"
+                  title="放大 (Zoom In)"
+                >
+                  <ZoomIn className="size-3.5" />
+                </button>
+              </div>
+
+              {/* 适应窗口按钮 */}
               <button
                 type="button"
-                onClick={handleZoomOut}
-                disabled={zoom <= 0.3}
-                className="p-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 disabled:opacity-40 cursor-pointer"
-                title="缩小 (Zoom Out)"
+                onClick={fitToViewport}
+                className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors cursor-pointer"
+                title="适应窗口 (Fit to Screen)"
               >
-                <ZoomOut className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleZoomReset}
-                className="px-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
-                title="重置缩放 (100%)"
-              >
-                {Math.round(zoom * 100)}%
-              </button>
-              <button
-                type="button"
-                onClick={handleZoomIn}
-                disabled={zoom >= 3.0}
-                className="p-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 disabled:opacity-40 cursor-pointer"
-                title="放大 (Zoom In)"
-              >
-                <ZoomIn className="size-3.5" />
+                <Scan className="size-3.5" />
+                <span>适应窗口</span>
               </button>
             </div>
           )}
@@ -389,11 +672,16 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
             type="button"
             onClick={handleExportPng}
             disabled={!svgHtml || isExporting}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-colors cursor-pointer disabled:opacity-40"
-            title="导出为高清图片 (.png)"
+            className={cn(
+              "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors cursor-pointer disabled:opacity-40",
+              exportFailed
+                ? "bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400 font-medium"
+                : "text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            )}
+            title={exportFailed ? "PNG 导出失败" : "导出为高清图片 (.png)"}
           >
             <ImageIcon className="size-3.5" />
-            <span>{isExporting ? "导出中..." : "PNG"}</span>
+            <span>{isExporting ? "导出中..." : exportFailed ? "导出失败" : "PNG"}</span>
           </button>
 
           {/* 全屏切换 */}
@@ -412,7 +700,7 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
       <div
         className={cn(
           "relative w-full overflow-hidden flex items-center justify-center bg-zinc-50/40 dark:bg-zinc-900/30",
-          isFullscreen ? "flex-1" : "min-h-[280px] max-h-[560px]"
+          isFullscreen ? "flex-1" : "h-[440px] min-h-[280px] max-h-[560px]"
         )}
       >
         {isEditing ? (
@@ -462,6 +750,9 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
                 type="button"
                 onClick={() => {
                   setCode(initialCode);
+                  setZoom(1);
+                  setOffset({ x: 0, y: 0 });
+                  stateRef.current = { zoom: 1, offset: { x: 0, y: 0 } };
                   renderDiagram(initialCode);
                 }}
                 className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 cursor-pointer"
@@ -474,15 +765,22 @@ export const DiagramViewer: React.FC<DiagramViewerProps> = ({
           /* 可视化渲染展示 */
           <div
             ref={containerRef}
-            className="w-full h-full overflow-auto flex items-center justify-center p-6"
-            style={{
-              cursor: zoom !== 1 ? "grab" : "default",
-            }}
+            data-diagram-viewport="true"
+            onMouseDown={handleMouseDown}
+            className={cn(
+              "w-full h-full overflow-hidden flex items-center justify-center p-6 select-none relative",
+              isDragging ? "cursor-grabbing" : "cursor-grab"
+            )}
           >
             <div
-              className="transition-transform duration-150 origin-center select-none flex items-center justify-center [&>svg]:max-w-none [&>svg]:h-auto"
+              className={cn(
+                "origin-center select-none flex items-center justify-center [&>svg]:max-w-none [&>svg]:w-full [&>svg]:h-full will-change-transform",
+                isDragging ? "transition-none" : "transition-transform duration-100 ease-out"
+              )}
               style={{
-                transform: `scale(${zoom})`,
+                width: naturalSize ? `${naturalSize.width}px` : "auto",
+                height: naturalSize ? `${naturalSize.height}px` : "auto",
+                transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${zoom})`,
               }}
               dangerouslySetInnerHTML={{ __html: svgHtml }}
             />
