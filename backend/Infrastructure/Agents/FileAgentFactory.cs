@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using MafHarnessDemo.App.Configuration;
 using MafHarnessDemo.App.Infrastructure.FileStore;
 using MafHarnessDemo.App.Infrastructure.Tools;
+using MafHarnessDemo.App.Infrastructure.Diagram;
 
 namespace MafHarnessDemo.App.Infrastructure.Agents;
 
@@ -37,13 +38,16 @@ public static class FileAgentFactory
         string? workspacePersona = null,
         ReflectionState? reflectionState = null,
         string permissionMode = "ask",
-        string? workspaceRoot = null)
+        string? workspaceRoot = null,
+        bool planEnabled = false)
     {
         var isFullPermission = string.Equals(permissionMode, "full", StringComparison.OrdinalIgnoreCase);
         var isAutoPermission = string.Equals(permissionMode, "auto", StringComparison.OrdinalIgnoreCase);
 
         var pdfTools = new PdfTools(fileAccessStore.DefaultDrive, workspaceRoot);
         var excelTools = new ExcelTools(fileAccessStore.DefaultDrive, workspaceRoot);
+        var diagramGenerator = new DiagramGenerator(chatClient);
+        var diagramTools = new DiagramTools(diagramGenerator);
 
         // Shell 工具（MAF 官方 Microsoft.Agents.AI.Tools.Shell）：
         // 若 permissionMode 为 "full"（完全访问权限），requireApproval 必须为 false 彻底免审放行；
@@ -132,6 +136,12 @@ public static class FileAgentFactory
             ? string.Empty
             : workspacePersona.TrimEnd() + "\n\n----\n\n";
 
+        if (planEnabled && !personaPrefix.Contains("先输出实施计划，等用户确认后再执行"))
+        {
+            personaPrefix = (string.IsNullOrEmpty(workspacePersona) ? string.Empty : workspacePersona.TrimEnd() + "\n\n")
+                + "## 计划模式约束\n先输出实施计划，等用户确认后再执行。\n\n----\n\n";
+        }
+
         var searchToolLine = webSearchTools is null
             ? string.Empty
             : "联网：web_search_exa（语义搜索）、web_fetch_exa（读网页全文）";
@@ -143,6 +153,9 @@ public static class FileAgentFactory
         var shellPermissionRule = isFullPermission
             ? "当前为完全访问权限（免审模式），执行 run_shell 命令已全面免审放行，无需等待用户审批。"
             : "只读命令（Get-* / Select-String / Start-Sleep / dir 等）会自动放行无需审批；结构操作和权限类命令（icacls 等）仍需用户批准，属正常流程。";
+        var planModeRule = planEnabled
+            ? "\n                                     - 【计划模式强制约束】当前已开启计划模式约束，必须先输出实施计划，等用户确认后再执行！在用户未明确确认前，只允许输出方案与计划，严禁直接调用写入文件、执行终端命令等操作工具！"
+            : string.Empty;
 
         var loopEvaluators = new List<LoopEvaluator>
         {
@@ -157,7 +170,7 @@ public static class FileAgentFactory
         {
             Name = "fileAssistant",
             // Description 与工具集保持一致：降级为离线时不能声称有联网搜索
-            Description = "MAF Harness Agent：文件读写(内置)/Shell/PDF/Excel/子智能体/清单/模式/记忆/循环"
+            Description = "MAF Harness Agent：文件读写(内置)/Shell/PDF/Excel/图表/子智能体/清单/模式/记忆/循环"
                           + (webSearchTools is null ? "" : "/联网搜索"),
 
             // 工作区人格（workspace/AGENTS.md，Program 读入）放在最前面：
@@ -171,6 +184,7 @@ public static class FileAgentFactory
                                         file_access_replace、file_access_replace_lines
                                   Shell：run_shell（只管文件结构与系统操作，分工见规则 1）
                                   文档：read_pdf、read_excel
+                                  图表：generate_diagram（生成与修改图表）、validate_diagram（校验图表）
                                   {{SEARCH_LINE}}
                                   清单：todos_add、todos_complete、todos_remove、
                                         todos_get_remaining、todos_get_all
@@ -207,7 +221,7 @@ public static class FileAgentFactory
                                      execute（执行）两种，默认 plan。复杂任务留在 plan 模式
                                      规划（探查现状 + 建清单 + 给出方案），经用户确认后
                                      mode_set(mode=execute) 再动手；简单问题在 plan 模式
-                                     直接回答即可，不要为小事切换模式。
+                                     直接回答即可，不要为小事切换模式。{{PLAN_MODE_RULE}}
                                   8. 文件记忆（file_memory_*）：跨会话的长期记忆文件。
                                      对话里出现用户的稳定信息（称呼、偏好、项目背景、重要约定）时，
                                      主动用 file_memory_write 存入，不要等用户说「记住」。
@@ -220,6 +234,12 @@ public static class FileAgentFactory
                                        （只读规划，不执行）；拿到方案后，向用户完整展示归类方案。
                                      - 【重要】当你启动后台子智能体（docAnalyst 或 fileOrganizer）后，必须在同一轮对话内立即调用等待/获取输出工具（如 background_agents_wait / background_agents_output 等）拿到子智能体的完整返回结果，并直接整理呈现给用户！严禁只启动后台任务就停下来询问用户「是否等待任务完成」。
                                      不要动辄委派——一步就能完成的小事自己做。
+                                   10. 图表生成与修改（generate_diagram / validate_diagram）：
+                                      - 自动识别用户是否需要生成图表（流程图 flowchart、时序图 sequence、状态机图 state、类图 class、ER图 er、架构图 architecture 等）；
+                                      - 自动判断最适合的图表类型并调用 generate_diagram 工具，生成符合 Mermaid 语法的源码；
+                                      - 必须生成 Mermaid DSL 源码，不要使用 AI 直接生成图片；
+                                      - 支持上下文关联修改：当用户说「在现有时序图中增加一个数据库节点」「把这个流程图改成状态机图」「在原图基础上增加异常处理分支」时，提取上轮生成的 Mermaid 源码传入 sourceCode 参数进行增量修改；
+                                      - 生成或修改完成后，在最终回复正文中必须包含完整的 Mermaid 代码块（`mermaid ... `），前端会自动渲染为高交互的图表卡片。
 
                                   纪律：
                                   - 没读过文件就不要引用它的内容，没写过就不要声称写过。
@@ -232,7 +252,8 @@ public static class FileAgentFactory
                                   """
                                   .Replace("{{SEARCH_LINE}}", searchToolLine)
                                   .Replace("{{ONLINE_RULE}}", onlineRule)
-                                   .Replace("{{SHELL_PERMISSION_RULE}}", shellPermissionRule),
+                                   .Replace("{{SHELL_PERMISSION_RULE}}", shellPermissionRule)
+                                   .Replace("{{PLAN_MODE_RULE}}", planModeRule),
 
             // 文件能力：内置 FileAccessProvider，store 是多盘动态路由。
             // 读写全内置，审批开关来自 FileAccess 配置节（appsettings 可配、
@@ -265,6 +286,7 @@ public static class FileAgentFactory
                     new ShellCommandSanitizer(shellAiFunction),
                     .. pdfTools.AsAiTools(),
                     .. excelTools.AsAiTools(),
+                    .. diagramTools.AsAiTools(),
                     .. webSearchTools ?? [],
                 ],
             },

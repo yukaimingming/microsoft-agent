@@ -30,6 +30,7 @@
     "embla-carousel-react": "^8.6.0",
     "lucide-react": "^0.552.0",
     "media-chrome": "^4.19.3",
+    "mermaid": "^12.2.0",
     "motion": "^14.0.0",
     "nanoid": "^6.0.2",
     "radix-ui": "^1.7.0",

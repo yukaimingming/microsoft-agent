@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageResponse } from "../../components/ai-elements/message.js";
 import { cn } from "../../lib/utils.js";
 import {
+  BrainIcon,
   BrainCircuitIcon,
   CheckCircle2Icon,
   ChevronRightIcon,
@@ -14,6 +15,7 @@ import {
   TerminalIcon,
   TriangleAlertIcon,
   PanelRightOpenIcon,
+  WorkflowIcon,
 } from "lucide-react";
 import type { Activity } from "@deepagent/shared";
 import { Shimmer } from "../../components/ai-elements/shimmer.js";
@@ -95,6 +97,8 @@ const TOOL_ACTIONS: Record<string, string> = {
   file_memory_search: "检索了长期记忆",
   read_pdf: "解析了 PDF 文档",
   read_excel: "解析了 Excel 表格",
+  generate_diagram: "生成了图表",
+  validate_diagram: "校验了图表语法",
   reflection_judge: "完成了反思评估",
   web_search: "搜索了网络",
   search_web: "搜索了网络",
@@ -145,6 +149,8 @@ const ACTIVE_TOOL_ACTIONS: Record<string, string> = {
   file_memory_search: "正在检索长期记忆",
   read_pdf: "正在解析 PDF 文档",
   read_excel: "正在解析 Excel 表格",
+  generate_diagram: "正在生成图表",
+  validate_diagram: "正在校验图表语法",
   reflection_judge: "正在进行反思评估",
   web_search: "正在搜索网络",
   search_web: "正在搜索网络",
@@ -199,7 +205,7 @@ function toolInputSummary(activity: Activity): string {
             ? [query || path]
             : (name.includes("fetch") || name === "web_fetch" || name === "web_fetch_exa")
               ? [url || path]
-              : [path];
+              : (name === "generate_diagram") ? [get("type", "description")] : (name === "validate_diagram") ? ["校验语法"] : [path];
   const summary = parts.filter(Boolean).join(" · ");
   return summary.length > 160 ? `${summary.slice(0, 157)}…` : summary;
 }
@@ -261,7 +267,8 @@ function ActionGlyph({ name, className }: { name: string; className?: string }) 
   if (name === "web_search" || name === "search_web" || name === "web_search_exa" || name === "web_fetch" || name === "web_fetch_exa" || name.includes("search_web") || name.includes("web_")) {
     return <GlobeIcon className={className} />;
   }
-  if (name === "execute" || name === "run_shell") return <TerminalIcon className={className} />;
+  if (name === "generate_diagram" || name === "validate_diagram") return <WorkflowIcon className={className} />;
+    if (name === "execute" || name === "run_shell") return <TerminalIcon className={className} />;
   if (name === "write_todos" || name.startsWith("todos_") || name === "write_file" || name === "edit_file" || name === "file_access_write" || name === "file_access_replace" || name === "file_access_replace_lines" || name === "file_memory_Write" || name === "file_memory_Edit" || name === "file_memory_write" || name === "file_memory_edit") {
     return <PencilLineIcon className={className} />;
   }
@@ -462,7 +469,7 @@ function ReasoningActivity({
           onToggle={(event) => setOpen(event.currentTarget.open)}
         >
           <summary className="flex w-full cursor-pointer list-none items-center gap-2 text-[13px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
-            <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
+            <BrainIcon className="size-4 shrink-0 text-[var(--color-text-muted)]" />
             <span className="animated-gradient-text shrink-0 font-medium">正在思考</span>
             <ChevronRightIcon
               className={cn(
@@ -484,7 +491,7 @@ function ReasoningActivity({
         onToggle={(event) => setOpen(event.currentTarget.open)}
       >
         <summary className="flex w-full cursor-pointer list-none items-center gap-2 text-[13px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
-          <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
+          <BrainIcon className="size-4 shrink-0 text-[var(--color-text-muted)]" />
           {shimmerActive ? (
             <span className="animated-gradient-text shrink-0 font-medium">正在思考</span>
           ) : (
@@ -562,14 +569,14 @@ function ToolActivityRow({
           <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 [&::-webkit-details-marker]:hidden">
             {shimmerActive ? (
               // 运行中的工具行：动作文案与路径/命令参数合并成一整行微光，避免只有开头几个字在闪。
-              <span className="shimmer shimmer-color-blue-500/60 text-foreground font-medium inline-block">
+              <span className="shimmer shimmer-color-blue-500/60 text-foreground font-medium inline-block break-all max-w-full">
                 {summaryText ? `${labelText} ${summaryText}` : labelText}
               </span>
             ) : (
               <>
                 <span>{labelText}</span>
                 {summaryText && (
-                  <code className="rounded-md bg-[var(--color-surface-3)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--color-text-primary)]">
+                  <code className="rounded-md bg-[var(--color-surface-3)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--color-text-primary)] break-all max-w-full">
                     {summaryText}
                   </code>
                 )}
@@ -952,7 +959,7 @@ export function ProcessActivityGroup({
               const description = detail?.goal ?? detail?.name ?? activity.title;
               return (
                 <div key={item.id} className="process-activity-enter text-[13px] text-[var(--color-text-secondary)]" style={staggerStyle}>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <BrainCircuitIcon className="size-[18px] w-[18px] shrink-0 text-[var(--color-text-muted)]" />
                     {isSubagentRunning ? (
                       <span className="shimmer shimmer-color-blue-500/60 text-foreground font-medium inline-block">{label}</span>

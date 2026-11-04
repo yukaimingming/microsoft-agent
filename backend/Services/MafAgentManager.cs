@@ -21,6 +21,7 @@ public sealed class MafAgentManager
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
     private readonly ConcurrentDictionary<string, AIAgent> _agents = new();
     private readonly ConcurrentDictionary<string, bool> _agentWebSearch = new();
+    private readonly ConcurrentDictionary<string, bool> _agentPlanEnabled = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeCts = new();
     private readonly ConcurrentDictionary<string, List<ToolApprovalRequestContent>> _pendingApprovals = new();
 
@@ -72,6 +73,27 @@ public sealed class MafAgentManager
             : null;
         var webSearchRequested = string.Equals(webSearchRaw, "True", StringComparison.OrdinalIgnoreCase)
             || string.Equals(webSearchRaw, "true", StringComparison.OrdinalIgnoreCase);
+
+        // 计划模式约束开关：当 planEnabled=true 时，向 system prompt 注入约束指令
+        var planEnabled = false;
+        if (forwardedProps.TryGetValue("planEnabled", out var peObj) && peObj is not null)
+        {
+            if (peObj is bool b)
+            {
+                planEnabled = b;
+            }
+            else if (peObj is JsonElement je)
+            {
+                planEnabled = je.ValueKind == JsonValueKind.True
+                    || (je.ValueKind == JsonValueKind.String && string.Equals(je.GetString(), "true", StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                var s = peObj.ToString();
+                planEnabled = string.Equals(s, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(s, "True", StringComparison.OrdinalIgnoreCase);
+            }
+        }
 
         var llm = _configuration.GetSection(LlmOptions.SectionName).Get<LlmOptions>() ?? new LlmOptions();
         var provider = _providerService.GetActive(providerId);
@@ -160,6 +182,10 @@ public sealed class MafAgentManager
                 File.WriteAllText(agentsMdPath, defaultPersona + "\n");
             }
             var workspacePersona = File.ReadAllText(agentsMdPath);
+            if (planEnabled)
+            {
+                workspacePersona = workspacePersona.TrimEnd() + "\n\n## 计划模式约束\n先输出实施计划，等用户确认后再执行。\n";
+            }
 
             // 5. 反思裁判状态
             var reflectionState = new ReflectionState
@@ -177,7 +203,9 @@ public sealed class MafAgentManager
             var existingAgent = isResume ? _agents.GetValueOrDefault(threadId) : null;
             bool reuseExisting = existingAgent is not null
                 && _agentWebSearch.TryGetValue(threadId, out var lastWebSearch)
-                && lastWebSearch == webSearchRequested;
+                && lastWebSearch == webSearchRequested
+                && _agentPlanEnabled.TryGetValue(threadId, out var lastPlanEnabled)
+                && lastPlanEnabled == planEnabled;
             if (reuseExisting && existingAgent is not null)
             {
                 agent = existingAgent;
@@ -185,9 +213,10 @@ public sealed class MafAgentManager
             else
             {
                 agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
-                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot));
+                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot, planEnabled));
                 _agents[threadId] = agent;
                 _agentWebSearch[threadId] = webSearchRequested;
+                _agentPlanEnabled[threadId] = planEnabled;
             }
 
             // 7. 获取或恢复会话

@@ -7,6 +7,7 @@
  * 2. 具备语言标题栏、一键复制代码按钮及复制状态反馈
  * 3. 智能兼容行内代码（inline code）与多行围栏代码块（fenced code block）
  * 4. 健壮的语言名称别名归一化与优雅降级（支持 py/js/ts/sh/shell/vue 等各种写法）
+ * 5. 拦截 Mermaid 图表语言，自动渲染高交互的 DiagramViewer 图表卡片
  */
 
 import { memo, type ComponentProps } from "react";
@@ -21,6 +22,7 @@ import {
   normalizeLanguage,
 } from "./code-block.js";
 import { cn } from "@/lib/utils";
+import { DiagramViewer } from "../../features/chat/diagram-viewer.js";
 
 interface MarkdownCodeBlockProps extends ComponentProps<"code"> {
   node?: unknown;
@@ -72,6 +74,11 @@ export const MarkdownCodeBlock = memo(function MarkdownCodeBlock({
 
   // 去除代码结尾多余的换行符
   const cleanCode = rawContent.replace(/\n$/, "");
+
+  // 拦截 Mermaid 图表语言，自动渲染为交互式图表卡片
+  if (rawLang?.toLowerCase() === "mermaid" || normalizedLang === "mermaid") {
+    return <DiagramViewer code={cleanCode} />;
+  }
 
   return (
     <div className="my-3.5 w-full overflow-hidden" data-streamdown="code-block-wrapper">
