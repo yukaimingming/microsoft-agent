@@ -473,6 +473,7 @@ function ChatInputContent({
   // 模型与思考等级合并下拉菜单状态
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
   const [isPermissionDropdownOpen, setIsPermissionDropdownOpen] = useState(false);
   const permissionDropdownRef = useRef<HTMLDivElement>(null);
   const [showFullAccessConfirmation, setShowFullAccessConfirmation] = useState(false);
@@ -485,6 +486,12 @@ function ChatInputContent({
   const [submenuTop, setSubmenuTop] = useState<number>(0);
   const submenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    if (!isModelDropdownOpen) {
+      setHoveredModel(null);
+    }
+  }, [isModelDropdownOpen]);
+
   const handleModelMouseEnter = (
     provId: string | undefined,
     modelName: string,
@@ -494,12 +501,12 @@ function ChatInputContent({
       clearTimeout(submenuTimerRef.current);
       submenuTimerRef.current = null;
     }
-    const itemEl = event.currentTarget;
-    const parentEl = modelDropdownRef.current;
-    if (parentEl) {
-      const parentRect = parentEl.getBoundingClientRect();
-      const itemRect = itemEl.getBoundingClientRect();
-      setSubmenuTop(Math.max(0, itemRect.top - parentRect.top));
+    const rect = event.currentTarget.getBoundingClientRect();
+    const parentRect = menuPanelRef.current?.getBoundingClientRect();
+    if (parentRect) {
+      const offset = rect.top - parentRect.top;
+      const maxTop = Math.max(0, parentRect.height - 130);
+      setSubmenuTop(Math.min(Math.max(0, offset), maxTop));
     }
     setHoveredModel({ provId, model: modelName });
   };
@@ -507,7 +514,7 @@ function ChatInputContent({
   const handleModelMouseLeave = () => {
     submenuTimerRef.current = setTimeout(() => {
       setHoveredModel(null);
-    }, 120);
+    }, 150);
   };
 
   const handleSubmenuMouseEnter = () => {
@@ -520,7 +527,7 @@ function ChatInputContent({
   const handleSubmenuMouseLeave = () => {
     submenuTimerRef.current = setTimeout(() => {
       setHoveredModel(null);
-    }, 120);
+    }, 150);
   };
 
   useEffect(() => {
@@ -1021,23 +1028,10 @@ function ChatInputContent({
                     {/* 模型状态圆点 */}
                     <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
 
-                    {/* 厂商与模型名（触发按钮仅显示模型，不显示思考等级） */}
-                    {(() => {
-                      const activeProv = providers.find((p) => p.id === activeProviderId);
-                      return (
-                        <span className="font-mono truncate max-w-[140px] sm:max-w-[200px] text-[11.5px] flex items-center gap-1">
-                          {activeProv ? (
-                            <>
-                              <span className="font-sans text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0">
-                                {activeProv.label}
-                              </span>
-                              <span className="text-zinc-400 dark:text-zinc-600 shrink-0">/</span>
-                            </>
-                          ) : null}
-                          <span className="truncate">{currentModel || modelStatus}</span>
-                        </span>
-                      );
-                    })()}
+                    {/* 模型名（直接显示模型名称，不前缀厂商） */}
+                    <span className="font-mono truncate max-w-[160px] sm:max-w-[220px] text-[11.5px] whitespace-nowrap">
+                      {currentModel || modelStatus}
+                    </span>
 
                     {/* 思考等级降级指示圆点 */}
                     {fallbackApplied && (
@@ -1059,8 +1053,9 @@ function ChatInputContent({
                   {/* 弹出式合并下拉面板（模型列表，悬停右侧滑出思考等级子菜单） */}
                   {isModelDropdownOpen && (
                     <div
+                      ref={menuPanelRef}
                       data-testid="model-selector-dropdown"
-                      className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-72 sm:w-80 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100"
+                      className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-72 sm:w-80 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100 overflow-visible"
                     >
                       {(() => {
                         const groupedProviders = providers.filter(
@@ -1268,12 +1263,9 @@ function ChatInputContent({
                           data-testid="effort-submenu"
                           onMouseEnter={handleSubmenuMouseEnter}
                           onMouseLeave={handleSubmenuMouseLeave}
-                          style={{ top: `${submenuTop}px` }}
-                          className="absolute left-full ml-1.5 z-60 w-44 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 animate-in fade-in zoom-in-95 duration-100"
+                          style={{ top: Math.max(0, submenuTop) }}
+                          className="absolute left-[calc(100%+4px)] z-50 w-44 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#242427] text-zinc-900 dark:text-zinc-100 p-1.5 shadow-xl dark:shadow-2xl animate-in fade-in zoom-in-95 duration-100 before:absolute before:-left-2 before:top-0 before:bottom-0 before:w-2"
                         >
-                          {/* 桥接透明区域，防止斜向移动鼠标至子菜单时失焦 */}
-                          <div className="absolute -left-2 top-0 bottom-0 w-2" />
-
                           <div className="px-2 py-1 text-[10.5px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60 pb-1 mb-1">
                             <span className="flex items-center gap-1">
                               <BrainIcon className="size-3 text-zinc-400 shrink-0" />

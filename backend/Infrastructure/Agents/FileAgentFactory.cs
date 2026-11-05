@@ -39,7 +39,8 @@ public static class FileAgentFactory
         ReflectionState? reflectionState = null,
         string permissionMode = "ask",
         string? workspaceRoot = null,
-        bool planEnabled = false)
+        bool planEnabled = false,
+        IReadOnlyList<AITool>? computerUseTools = null)
     {
         var isFullPermission = string.Equals(permissionMode, "full", StringComparison.OrdinalIgnoreCase);
         var isAutoPermission = string.Equals(permissionMode, "auto", StringComparison.OrdinalIgnoreCase);
@@ -126,6 +127,33 @@ public static class FileAgentFactory
             },
         });
 
+        AIAgent? computerUseAgent = null;
+        if (computerUseTools != null && computerUseTools.Count > 0)
+        {
+            computerUseAgent = chatClient.AsAIAgent(new ChatClientAgentOptions
+            {
+                Name = "computer-use",
+                Description = "计算机操作员（computer-use）：通过桌面自动化工具操作本地电脑桌面应用、窗口与界面交互",
+                ChatOptions = new ChatOptions
+                {
+                    Tools = [.. computerUseTools],
+                    Instructions = """
+                        你是专职的计算机操作员（computer-use），母 agent 会在需要直接操作这台电脑的桌面应用或窗口时委派给你。
+                        你拥有 desktop_* 系列 MCP 工具，可以直接操控 Windows 桌面应用与 UI 界面。
+
+                        核心规则与操作纪律：
+                        1. 权限与职责：你只在确实需要操作这台电脑的桌面应用/窗口时才使用相关工具。严禁删除文件、格式化磁盘或执行任何破坏性命令；
+                        2. 观察优先：能只读观察（desktop_status / desktop_list_windows / desktop_list_apps / desktop_snapshot）就不要盲目乱点；
+                        3. 快照与引用（@ref）：所有元素交互（click / type / set_value 等）依赖的 ref ID 会随窗口刷新或交互失效。每次操作前或界面改变后，必须重新调用 desktop_snapshot 获取最新的 @ref 元素树；
+                        4. 启动与输入：
+                           - 打开应用优先使用 desktop_launch(app="notepad" 等)；
+                           - 文本框输入优先使用 desktop_set_value(ref=..., value=...) 直接赋值，或 desktop_type(ref=..., text=...)；
+                        5. 完成后向母 agent 精练汇报操作步骤与当前窗口状态，总字数控制在 200 字以内。
+                        """,
+                },
+            });
+        }
+
         // 提示词按「有无联网搜索」条件化：白名单行与联网规则都是占位符替换——
         // 模型只能调用白名单里的工具（幻觉调用不存在的工具会触发解析崩溃，实测踩过），
         // 所以启用/停用搜索必须同步改提示词。联网工具名与
@@ -155,6 +183,10 @@ public static class FileAgentFactory
             : "只读命令（Get-* / Select-String / Start-Sleep / dir 等）会自动放行无需审批；结构操作和权限类命令（icacls 等）仍需用户批准，属正常流程。";
         var planModeRule = planEnabled
             ? "\n                                     - 【计划模式强制约束】当前已开启计划模式约束，必须先输出实施计划，等用户确认后再执行！在用户未明确确认前，只允许输出方案与计划，严禁直接调用写入文件、执行终端命令等操作工具！"
+            : string.Empty;
+        var computerUseSublist = computerUseAgent != null ? "、computer-use（计算机操作助手）" : string.Empty;
+        var computerUseRule = computerUseAgent != null
+            ? "\n                                      - computer-use（计算机操作助手）：当用户需要操作这台电脑上的桌面应用或窗口（如打开记事本写话、点击或切换窗口、读取桌面应用界面等）时派给它，它拥有 desktop_* 专用工具真实控制桌面；操作完成后汇总结果；"
             : string.Empty;
 
         var loopEvaluators = new List<LoopEvaluator>
@@ -190,7 +222,7 @@ public static class FileAgentFactory
                                         todos_get_remaining、todos_get_all
                                   模式：mode_get（查当前模式）、mode_set（切模式）
                                   记忆：file_memory_*
-                                  子智能体：docAnalyst（文档分析员）、fileOrganizer（文件整理员）
+                                  子智能体：docAnalyst（文档分析员）、fileOrganizer（文件整理员）{{COMPUTER_USE_SUBLIST}}
 
                                   使用规则：
                                   1. 分工（先看这条再动手）：
@@ -231,8 +263,8 @@ public static class FileAgentFactory
                                      - docAnalyst（文档分析员）：分析 PDF/Excel 内容派给它（工作区根目录默认有 project-overview.xlsx 可直接分析，先用 file_access_ls(".") 确认文件名即可，严禁全盘递归搜索文件），
                                        它返回结构化摘要——长文档的原文消化在它那边完成，不会撑爆你的上下文。
                                      - fileOrganizer（文件整理员）：扫描目录、制定归类方案派给它
-                                       （只读规划，不执行）；拿到方案后，向用户完整展示归类方案。
-                                     - 【重要】当你启动后台子智能体（docAnalyst 或 fileOrganizer）后，必须在同一轮对话内立即调用等待/获取输出工具（如 background_agents_wait / background_agents_output 等）拿到子智能体的完整返回结果，并直接整理呈现给用户！严禁只启动后台任务就停下来询问用户「是否等待任务完成」。
+                                       （只读规划，不执行）；拿到方案后，向用户完整展示归类方案。{{COMPUTER_USE_RULE}}
+                                     - 【重要】当你启动后台子智能体（docAnalyst、fileOrganizer 或 computer-use）后，必须在同一轮对话内立即调用等待/获取输出工具（如 background_agents_wait / background_agents_output 等）拿到子智能体的完整返回结果，并直接整理呈现给用户！严禁只启动后台任务就停下来询问用户「是否等待任务完成」。
                                      不要动辄委派——一步就能完成的小事自己做。
                                    10. 图表生成与修改（generate_diagram / validate_diagram）：
                                       - 自动识别用户是否需要生成图表（流程图 flowchart、时序图 sequence、状态机图 state、类图 class、ER图 er、架构图 architecture 等）；
@@ -253,7 +285,9 @@ public static class FileAgentFactory
                                   .Replace("{{SEARCH_LINE}}", searchToolLine)
                                   .Replace("{{ONLINE_RULE}}", onlineRule)
                                    .Replace("{{SHELL_PERMISSION_RULE}}", shellPermissionRule)
-                                   .Replace("{{PLAN_MODE_RULE}}", planModeRule),
+                                   .Replace("{{PLAN_MODE_RULE}}", planModeRule)
+                                   .Replace("{{COMPUTER_USE_SUBLIST}}", computerUseSublist)
+                                   .Replace("{{COMPUTER_USE_RULE}}", computerUseRule),
 
             // 文件能力：内置 FileAccessProvider，store 是多盘动态路由。
             // 读写全内置，审批开关来自 FileAccess 配置节（appsettings 可配、
@@ -308,6 +342,11 @@ public static class FileAgentFactory
                         {
                             return ValueTask.FromResult(true);
                         }
+                        if (context.FunctionCallContent.Name.StartsWith("desktop_", StringComparison.OrdinalIgnoreCase) ||
+                            context.FunctionCallContent.Name.StartsWith("background_agents_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ValueTask.FromResult(true);
+                        }
                         return AutoApproveReadOnlyShell(context);
                     }
                 ],
@@ -328,6 +367,7 @@ public static class FileAgentFactory
             [
                 docAnalyst,
                 fileOrganizer,
+                ..(computerUseAgent != null ? [computerUseAgent] : Array.Empty<AIAgent>()),
             ],
         };
     }

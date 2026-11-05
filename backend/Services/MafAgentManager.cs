@@ -22,6 +22,7 @@ public sealed class MafAgentManager
     private readonly ConcurrentDictionary<string, AIAgent> _agents = new();
     private readonly ConcurrentDictionary<string, bool> _agentWebSearch = new();
     private readonly ConcurrentDictionary<string, bool> _agentPlanEnabled = new();
+    private readonly ConcurrentDictionary<string, bool> _agentComputerUse = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeCts = new();
     private readonly ConcurrentDictionary<string, List<ToolApprovalRequestContent>> _pendingApprovals = new();
 
@@ -151,6 +152,30 @@ public sealed class MafAgentManager
                 webSearchTools = tools;
             }
 
+            // 2.1 计算机操作（agent-desktop MCP）
+            var computerUse = _configuration.GetSection(ComputerUseOptions.SectionName).Get<ComputerUseOptions>() ?? new ComputerUseOptions();
+            IReadOnlyList<AITool>? computerUseTools = null;
+            if (computerUse.Enabled)
+            {
+                try
+                {
+                    using var cuCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                    var (cuTools, cuErr) = await ComputerUseTools.GetOrCreateToolsAsync(computerUse.Command, computerUse.Args, cuCts.Token);
+                    if (cuTools != null)
+                    {
+                        computerUseTools = cuTools;
+                    }
+                    else if (!string.IsNullOrEmpty(cuErr))
+                    {
+                        _logger.LogWarning("[ComputerUse] agent-desktop MCP 启动未就绪，降级运行: {Error}", cuErr);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[ComputerUse] agent-desktop MCP 启动异常，降级运行");
+                }
+            }
+
             // 3. 长期记忆存储
             var memoryDir = Path.Combine(workspaceRoot, "agent-file-memory", "current");
             Directory.CreateDirectory(memoryDir);
@@ -201,11 +226,14 @@ public sealed class MafAgentManager
             // 审批续跑复用既有 Agent；但若本轮 webSearch 开关与建 Agent 时不一致，
             // 必须重建（工具列表在创建时固化），保证开关即时生效。
             var existingAgent = isResume ? _agents.GetValueOrDefault(threadId) : null;
+            var hasCuTools = computerUseTools != null && computerUseTools.Count > 0;
             bool reuseExisting = existingAgent is not null
                 && _agentWebSearch.TryGetValue(threadId, out var lastWebSearch)
                 && lastWebSearch == webSearchRequested
                 && _agentPlanEnabled.TryGetValue(threadId, out var lastPlanEnabled)
-                && lastPlanEnabled == planEnabled;
+                && lastPlanEnabled == planEnabled
+                && _agentComputerUse.TryGetValue(threadId, out var lastCu)
+                && lastCu == hasCuTools;
             if (reuseExisting && existingAgent is not null)
             {
                 agent = existingAgent;
@@ -213,10 +241,11 @@ public sealed class MafAgentManager
             else
             {
                 agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
-                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot, planEnabled));
+                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot, planEnabled, computerUseTools));
                 _agents[threadId] = agent;
                 _agentWebSearch[threadId] = webSearchRequested;
                 _agentPlanEnabled[threadId] = planEnabled;
+                _agentComputerUse[threadId] = hasCuTools;
             }
 
             // 7. 获取或恢复会话
