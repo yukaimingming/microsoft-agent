@@ -565,73 +565,58 @@ export function WorkspaceSidebar({
             <span>设置</span>
           </button>
 
-          {/* 设置旁边的手机图标：点击弹出个人微信 ClawBot 二维码（iLink 协议）及实时连接状态显示 */}
-          {onOpenWeChatModal && (
-            <button
-              type="button"
-              data-testid="open-wechat-clawbot-btn"
-              onClick={onOpenWeChatModal}
-              title={
-                wechatConnected
-                  ? "个人助手 ClawBot 已连接 (点击管理微信 iLink 连接)"
-                  : "点击扫码绑定个人微信 ClawBot (iLink 协议)"
-              }
-              aria-label="微信 ClawBot 扫码连接"
-              className={`group relative flex flex-1 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors border ${
-                wechatConnected
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-                  : wechatStatus === "scaned"
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                    : "border-zinc-800/80 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-              }`}
-            >
-              <span className="relative flex shrink-0 items-center justify-center">
+          {/* 右侧紧凑图标组：个人微信 ClawBot 手机扫码图标 + 黑白主题切换 */}
+          <div className="flex items-center gap-0.5">
+            {onOpenWeChatModal && (
+              <button
+                type="button"
+                data-testid="open-wechat-clawbot-btn"
+                onClick={onOpenWeChatModal}
+                title={
+                  wechatConnected
+                    ? "个人助手 ClawBot 已连接 (点击管理微信 iLink 连接)"
+                    : wechatStatus === "scaned"
+                      ? "待微信确认 (点击查看微信 iLink 连接)"
+                      : "点击扫码绑定个人微信 ClawBot (iLink 协议)"
+                }
+                aria-label="微信 ClawBot 扫码连接"
+                className={`group flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-zinc-900 transition-colors ${
+                  wechatConnected
+                    ? "text-emerald-400 hover:text-emerald-300"
+                    : wechatStatus === "scaned"
+                      ? "text-amber-400 hover:text-amber-300"
+                      : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
                 <SmartphoneIcon
                   className={`size-4 ${
                     wechatConnected
                       ? "text-emerald-400"
                       : wechatStatus === "scaned"
                         ? "text-amber-400"
-                        : "text-zinc-400 group-hover:text-emerald-400"
+                        : "text-zinc-500 group-hover:text-zinc-300"
                   }`}
                 />
-                <span
-                  data-testid="sidebar-clawbot-status-dot"
-                  className={`absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2 ring-black ${
-                    wechatConnected
-                      ? "bg-emerald-400 animate-pulse"
-                      : wechatStatus === "scaned"
-                        ? "bg-amber-400 animate-ping"
-                        : "bg-zinc-500"
-                  }`}
-                />
-              </span>
-              <span data-testid="sidebar-clawbot-status-text" className="truncate">
-                {wechatConnected
-                  ? "ClawBot 已连接"
-                  : wechatStatus === "scaned"
-                    ? "待微信确认"
-                    : "ClawBot 未连接"}
-              </span>
-            </button>
-          )}
+              </button>
+            )}
 
-          {onToggleTheme && (
-            <button
-              type="button"
-              data-testid="sidebar-toggle-theme-btn"
-              onClick={onToggleTheme}
-              className="flex size-8 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors"
-              title={theme === "dark" ? "切换为浅色主题 (Light)" : "切换为深色主题 (Dark)"}
-              aria-label="切换黑白主题"
-            >
-              {theme === "dark" ? (
-                <SunIcon className="size-4 text-amber-400" />
-              ) : (
-                <MoonIcon className="size-4 text-indigo-400" />
-              )}
-            </button>
-          )}
+            {onToggleTheme && (
+              <button
+                type="button"
+                data-testid="sidebar-toggle-theme-btn"
+                onClick={onToggleTheme}
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors"
+                title={theme === "dark" ? "切换为浅色主题 (Light)" : "切换为深色主题 (Dark)"}
+                aria-label="切换黑白主题"
+              >
+                {theme === "dark" ? (
+                  <SunIcon className="size-4 text-amber-400" />
+                ) : (
+                  <MoonIcon className="size-4 text-indigo-400" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </aside>
 

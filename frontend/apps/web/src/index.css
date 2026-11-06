@@ -1109,3 +1109,69 @@ html.light .group\/nav-item:hover .turn-navigator-tick {
   background-color: #1e293b !important;
 }
 
+/* ================= 新版设置面板（通用 / AI / 电脑）深浅色主题适配 ================= */
+html.light .settings-panel-dialog {
+  background-color: #fafafa !important;
+  border-color: #e4e4e7 !important;
+}
+html.light .settings-sidebar {
+  background-color: #ffffff !important;
+  border-right-color: #f1f5f9 !important;
+}
+html.light .settings-content-pane {
+  background-color: #fafafa !important;
+}
+html.light .settings-search-input {
+  background-color: #f1f1f4 !important;
+  border: 1px solid transparent !important;
+  color: #09090b !important;
+}
+html.light .settings-search-input:focus {
+  border-color: #cbd5e1 !important;
+  background-color: #ffffff !important;
+}
+html.light .settings-search-input::placeholder {
+  color: #71717a !important;
+}
+html.light .settings-nav-item-active {
+  background-color: #ebebef !important;
+  color: #09090b !important;
+}
+html.light .settings-section-card,
+html.light .settings-more-bar,
+html.light .settings-more-card {
+  background-color: #ffffff !important;
+  border-color: #e4e4e7 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+html.light .settings-provider-row {
+  border-color: #f4f4f5 !important;
+}
+html.light .settings-provider-row:hover {
+  background-color: #f8fafc !important;
+}
+html.light .settings-action-pill {
+  background-color: #f1f1f4 !important;
+  color: #18181b !important;
+}
+html.light .settings-action-pill:hover {
+  background-color: #e4e4e7 !important;
+}
+html.light .settings-more-card-icon {
+  background-color: #f4f4f5 !important;
+  border-color: #e4e4e7 !important;
+}
+html.light .settings-theme-card {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+html.light .settings-theme-card-active {
+  background-color: #f8fafc !important;
+  border-color: #2563eb !important;
+}
+html.light [data-testid="computer-use-switch"][aria-checked="false"] {
+  background-color: #cbd5e1 !important;
+}
+html.light [data-testid="computer-use-switch"][aria-checked="true"] {
+  background-color: #10b981 !important;
+}

@@ -822,6 +822,8 @@ export function buildRunParameters(
     webSearch?: boolean;
     /** 计划模式：开启后代理先输出实施计划，待确认后再执行。*/
     planEnabled?: boolean;
+    /** 是否启用 Computer Use（电脑桌面操作）能力。 */
+    computerUseEnabled?: boolean;
   },
   resume?: Array<{ interruptId: string; status: "resolved" | "cancelled"; payload?: unknown }>,
 ): RunAgentParameters {
@@ -840,6 +842,9 @@ export function buildRunParameters(
       permissionMode: options.permissionMode ?? DEFAULT_PERMISSION_MODE,
       webSearch: options.webSearch ?? false,
       planEnabled: options.planEnabled ?? false,
+      ...(options.computerUseEnabled !== undefined
+        ? { computerUseEnabled: options.computerUseEnabled }
+        : {}),
     },
     ...(resume && resume.length > 0 ? { resume } : {}),
   };

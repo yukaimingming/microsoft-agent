@@ -42,7 +42,7 @@ const AGENT_URL = "/agent";
 
 export function App() {
   const settings = useProviderSettings();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, themeMode, setThemeMode } = useTheme();
   const {
     state,
     isRunning,
@@ -386,6 +386,24 @@ export function App() {
     }
   }, [webSearch]);
 
+  // Computer Use（电脑桌面自动化操作）开关：仅启用时才允许挂载并调用 computer-use 子代理操作电脑。
+  const [computerUseEnabled, setComputerUseEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("maf_computer_use_enabled");
+      return saved === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("maf_computer_use_enabled", computerUseEnabled ? "1" : "0");
+    } catch {
+      // 浏览器禁用本地存储时，Computer Use 开关仍在当前页面会话内生效。
+    }
+  }, [computerUseEnabled]);
+
   const effortResolution = useMemo(() => {
     if (!currentModelId) {
       return { effort: settings.effort, fallbackApplied: false, supported: availableEffortsForModel("") };
@@ -441,9 +459,10 @@ export function App() {
         permissionMode,
         webSearch,
         planEnabled,
+        computerUseEnabled,
       }, attachments);
     },
-    [canSend, send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode, webSearch, planEnabled],
+    [canSend, send, settings.activeProviderId, currentModelId, effortResolution.effort, workspaceRoot, permissionMode, webSearch, planEnabled, computerUseEnabled],
   );
 
   // 新建会话
@@ -580,6 +599,7 @@ export function App() {
           permissionMode,
           webSearch,
           planEnabled,
+          computerUseEnabled,
         });
       }, 60);
     }
@@ -594,6 +614,7 @@ export function App() {
       permissionMode,
       webSearch,
       planEnabled,
+      computerUseEnabled,
     });
   };
 
@@ -686,11 +707,12 @@ export function App() {
           permissionMode,
           webSearch,
           planEnabled,
+          computerUseEnabled,
         },
         attachments,
       );
     },
-    [activeSplitSessionId, canSend, sendToThread, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled],
+    [activeSplitSessionId, canSend, sendToThread, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled, computerUseEnabled],
   );
 
   const handleStopRight = useCallback(() => {
@@ -748,13 +770,14 @@ export function App() {
               permissionMode,
               webSearch,
               planEnabled,
+              computerUseEnabled,
             },
             activeSplitSessionId,
           );
         }, 60);
       }
     },
-    [activeSplitSessionId, setDecision, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled],
+    [activeSplitSessionId, setDecision, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled, computerUseEnabled],
   );
 
   const handleSubmitDecisionsRight = useCallback((): void => {
@@ -768,10 +791,11 @@ export function App() {
         permissionMode,
         webSearch,
         planEnabled,
+        computerUseEnabled,
       },
       activeSplitSessionId,
     );
-  }, [activeSplitSessionId, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled]);
+  }, [activeSplitSessionId, submitDecisions, settings.activeProviderId, currentModelId, effortResolution.effort, rightWorkspace, permissionMode, webSearch, planEnabled, computerUseEnabled]);
 
   // 上次关闭前若有分屏会话，启动恢复完成后自动重新拉起右屏（线程不在内存时后台载入，不打乱主屏）
   useEffect(() => {
@@ -1020,7 +1044,7 @@ export function App() {
         initialPath={workspaceRoot || undefined}
       />
 
-      {/* 模型设置弹窗 */}
+      {/* 模型与系统设置弹窗 */}
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -1036,6 +1060,10 @@ export function App() {
         onSelectProvider={settings.setActiveProviderId}
         theme={theme}
         onThemeChange={setTheme}
+        themeMode={themeMode}
+        onThemeModeChange={setThemeMode}
+        computerUseEnabled={computerUseEnabled}
+        onComputerUseEnabledChange={setComputerUseEnabled}
       />
 
       {/* 个人微信 ClawBot 扫码绑定弹窗 (iLink 协议) */}

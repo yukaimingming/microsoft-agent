@@ -187,7 +187,7 @@ public static class FileAgentFactory
         var computerUseSublist = computerUseAgent != null ? "、computer-use（计算机操作助手）" : string.Empty;
         var computerUseRule = computerUseAgent != null
             ? "\n                                      - computer-use（计算机操作助手）：当用户需要操作这台电脑上的桌面应用或窗口（如打开记事本写话、点击或切换窗口、读取桌面应用界面等）时派给它，它拥有 desktop_* 专用工具真实控制桌面；操作完成后汇总结果；"
-            : string.Empty;
+            : "\n                                      - 【电脑操作未启用】当前用户在「设置 -> 电脑」中未启用 Computer Use（电脑桌面操作能力），禁止尝试操作本地桌面应用或窗口；若用户请求操作电脑桌面，请如实提示先在「设置 -> 电脑」中开启 Computer Use 功能；";
 
         var loopEvaluators = new List<LoopEvaluator>
         {

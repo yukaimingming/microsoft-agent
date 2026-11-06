@@ -152,10 +152,34 @@ public sealed class MafAgentManager
                 webSearchTools = tools;
             }
 
-            // 2.1 计算机操作（agent-desktop MCP）
+            // 2.1 计算机操作（agent-desktop MCP）——仅在设置启用 Computer Use 时挂载
             var computerUse = _configuration.GetSection(ComputerUseOptions.SectionName).Get<ComputerUseOptions>() ?? new ComputerUseOptions();
+            var computerUseRequested = computerUse.Enabled;
+            if (forwardedProps.TryGetValue("computerUseEnabled", out var cuObj) && cuObj is not null)
+            {
+                if (cuObj is bool cuBool)
+                {
+                    computerUseRequested = cuBool;
+                }
+                else if (cuObj is JsonElement cuJe)
+                {
+                    if (cuJe.ValueKind == JsonValueKind.True) computerUseRequested = true;
+                    else if (cuJe.ValueKind == JsonValueKind.False) computerUseRequested = false;
+                    else if (cuJe.ValueKind == JsonValueKind.String)
+                    {
+                        computerUseRequested = string.Equals(cuJe.GetString(), "true", StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+                else
+                {
+                    var cuStr = cuObj.ToString();
+                    computerUseRequested = string.Equals(cuStr, "true", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(cuStr, "True", StringComparison.OrdinalIgnoreCase);
+                }
+            }
+
             IReadOnlyList<AITool>? computerUseTools = null;
-            if (computerUse.Enabled)
+            if (computerUse.Enabled && computerUseRequested)
             {
                 try
                 {

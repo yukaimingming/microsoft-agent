@@ -44,6 +44,8 @@ export interface AgentRunOptions {
   webSearch?: boolean;
   /** 计划模式：开启后代理先输出实施计划，待确认后再执行。*/
   planEnabled?: boolean;
+  /** 是否启用 Computer Use（电脑桌面自动化操作）子代理与工具。 */
+  computerUseEnabled?: boolean;
 }
 
 /** 单个中断的决策类型。 */
