@@ -112,6 +112,10 @@ public sealed class MafAgentManager
 
         var adapter = new AguiStreamAdapter(runId, threadId, sseWriter, workspaceRoot);
 
+        // agent-desktop（Computer Use）挂载句柄与挂载状态：在 try 内赋值，finally/catch 兜底释放与反馈
+        ComputerUseHandle? desktopHandle = null;
+        var computerUseMounted = false;
+
         try
         {
         // 1. 初始化文件存储与权限审核模式
@@ -183,11 +187,15 @@ public sealed class MafAgentManager
             {
                 try
                 {
+                    // 每轮独立挂载、轮末 finally 释放：desktop_* 工具绑定本轮的 MCP 客户端，
+                    // 轮末随客户端一起关闭并兜底终结 node 进程树与 overlay 渲染子进程，不跨轮残留。
                     using var cuCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-                    var (cuTools, cuErr) = await ComputerUseTools.GetOrCreateToolsAsync(computerUse.Command, computerUse.Args, cuCts.Token);
-                    if (cuTools != null)
+                    var (cuHandle, cuErr) = await ComputerUseTools.MountAsync(computerUse.Command, computerUse.Args, cuCts.Token);
+                    if (cuHandle != null)
                     {
-                        computerUseTools = cuTools;
+                        desktopHandle = cuHandle;
+                        computerUseTools = cuHandle.Tools;
+                        computerUseMounted = true;
                     }
                     else if (!string.IsNullOrEmpty(cuErr))
                     {
@@ -249,9 +257,12 @@ public sealed class MafAgentManager
             AIAgent agent;
             // 审批续跑复用既有 Agent；但若本轮 webSearch 开关与建 Agent 时不一致，
             // 必须重建（工具列表在创建时固化），保证开关即时生效。
+            // 本轮挂载了 Computer Use 时也必须重建：desktop_* 工具绑定本轮独立挂载的
+            // MCP 客户端，轮末随 finally 释放，复用旧 Agent 会拿到已关闭客户端的工具。
             var existingAgent = isResume ? _agents.GetValueOrDefault(threadId) : null;
             var hasCuTools = computerUseTools != null && computerUseTools.Count > 0;
             bool reuseExisting = existingAgent is not null
+                && !hasCuTools
                 && _agentWebSearch.TryGetValue(threadId, out var lastWebSearch)
                 && lastWebSearch == webSearchRequested
                 && _agentPlanEnabled.TryGetValue(threadId, out var lastPlanEnabled)
@@ -361,13 +372,51 @@ public sealed class MafAgentManager
         catch (Exception ex)
         {
             _logger.LogError(ex, "会话 [{ThreadId}] 执行发生异常", threadId);
-            await adapter.EmitRunErrorAsync(ex.Message);
+            // 任何异常都必须给用户可见的中文反馈（RUN_ERROR），尤其防止模型幻觉调用
+            // 未挂载的 desktop_* 工具时静默断流（用户实测：输出一半就断开且无任何提示）。
+            await adapter.EmitRunErrorAsync(BuildRunErrorMessage(ex, computerUseMounted));
         }
         finally
         {
             _activeCts.TryRemove(threadId, out _);
+            // 轮末兜底释放本轮挂载的 agent-desktop MCP：关闭客户端并依据 pidfile
+            // 终结 node 进程树、清理遗留的光标 overlay 渲染子进程（未挂载时为空操作）。
+            await ComputerUseTools.ReleaseAsync(desktopHandle);
             await onComplete();
         }
+    }
+
+    /// <summary>
+    /// 将任意执行异常转换为用户可见的中文友好错误信息（RUN_ERROR），保证前端一定收到反馈而非静默断流。
+    /// Computer Use 相关异常（含模型幻觉调用未挂载的 desktop_* 工具）按真实挂载状态给出明确指引。
+    /// </summary>
+    private static string BuildRunErrorMessage(Exception err, bool computerUseMounted)
+    {
+        var chain = new System.Text.StringBuilder();
+        var t = err;
+        var depth = 0;
+        while (t != null && depth < 6)
+        {
+            if (!string.IsNullOrEmpty(t.Message))
+            {
+                chain.Append(t.Message).Append(' ');
+            }
+            chain.Append(t.GetType().FullName).Append(' ');
+            t = t.InnerException == t ? null : t.InnerException;
+            depth++;
+        }
+        var lowered = chain.ToString().ToLowerInvariant();
+        var computerUseRelated = lowered.Contains("computer-use") || lowered.Contains("computer_use")
+            || lowered.Contains("computeruse") || lowered.Contains("desktop_")
+            || lowered.Contains("agent-desktop");
+        if (computerUseRelated)
+        {
+            return computerUseMounted
+                ? "本轮执行中断：Computer Use 工具调用失败，请重试；若持续失败请检查「设置→电脑」页的 Computer Use 开关与配置。"
+                : "本轮执行中断：Computer Use 未启用或调用失败，请在「设置→电脑」开启后重试。";
+        }
+        var first = !string.IsNullOrWhiteSpace(err.Message) ? err.Message.Trim() : err.GetType().Name;
+        return "本轮执行中断：" + first;
     }
 
     public bool CancelThread(string threadId)

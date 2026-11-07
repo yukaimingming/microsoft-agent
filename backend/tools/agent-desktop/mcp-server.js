@@ -40,6 +40,56 @@ const desktopRunner = resolveDesktopRunner();
 
 let activeSessionId = null;
 
+// —— 进程生命周期与子进程清理 ——————————————————————————————
+// .NET 宿主（ComputerUseTools）经环境变量 AGENT_DESKTOP_MCP_PIDFILE 传入凭据文件路径；
+// node 启动时写入 { pid, session }，供宿主在轮末兜底 taskkill /T /F 终结进程树并关闭遗留 overlay。
+const pidFile = process.env.AGENT_DESKTOP_MCP_PIDFILE || null;
+let cleanupDone = false;
+
+function writePidFile(sessionId) {
+  if (!pidFile) return;
+  try {
+    fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, session: sessionId || null }));
+  } catch {}
+}
+
+// 退出清理：关闭本会话的光标 overlay 渲染子进程并封存会话。
+// 仅使用同步 spawnSync（process 'exit' 回调中不允许异步操作）；幂等，可安全重复调用。
+function cleanupOnExit() {
+  if (cleanupDone) return;
+  cleanupDone = true;
+  const spawnBin = fs.existsSync(desktopRunner) ? desktopRunner : nativeExe;
+  if (activeSessionId) {
+    try {
+      spawnSync(spawnBin, [nativeExe, 'cursor-overlay', 'disable', '--session', activeSessionId], {
+        encoding: 'utf8', windowsHide: false, timeout: 4000
+      });
+    } catch {}
+    try {
+      spawnSync(spawnBin, [nativeExe, 'session', 'end', '--session', activeSessionId], {
+        encoding: 'utf8', windowsHide: false, timeout: 4000
+      });
+    } catch {}
+    console.error('[AGENT-DESKTOP-MCP] Session cleaned up on exit:', activeSessionId);
+  }
+  if (pidFile) {
+    try { fs.unlinkSync(pidFile); } catch {}
+  }
+}
+
+['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGBREAK'].forEach((sig) => {
+  process.on(sig, () => {
+    cleanupOnExit();
+    process.exit(0);
+  });
+});
+process.on('exit', cleanupOnExit);
+process.on('uncaughtException', (err) => {
+  console.error('[AGENT-DESKTOP-MCP] uncaughtException:', err && err.message);
+  cleanupOnExit();
+  process.exit(1);
+});
+
 function ensureActiveSessionWithCursor(spawnBin, targetExe) {
   if (activeSessionId) return activeSessionId;
   try {
@@ -53,6 +103,7 @@ function ensureActiveSessionWithCursor(spawnBin, targetExe) {
       if (parsed?.data?.session_id) {
         activeSessionId = parsed.data.session_id;
         process.env.AGENT_DESKTOP_SESSION = activeSessionId;
+        writePidFile(activeSessionId);
         // 只改呈现：放大虚拟光标。不传 --no-ripple / --no-highlight，点击波纹和控件轮廓保持开启。
         const overlayRes = spawnSync(spawnBin, [
           targetExe, 'cursor-overlay', 'enable',
@@ -91,22 +142,6 @@ function ensureActiveSessionWithCursor(spawnBin, targetExe) {
     return null;
   }
   return activeSessionId;
-}
-
-function endActiveSession() {
-  if (!activeSessionId) return;
-  try {
-    const spawnBin = fs.existsSync(desktopRunner) ? desktopRunner : nativeExe;
-    spawnSync(spawnBin, [nativeExe, 'session', 'end', '--session', activeSessionId], {
-      encoding: 'utf8',
-      windowsHide: true,
-      timeout: 4000
-    });
-  } catch {}
-}
-
-for (const ev of ['SIGINT', 'SIGTERM', 'beforeExit']) {
-  process.once(ev, endActiveSession);
 }
 
 // 56 commands from agent-desktop
@@ -170,6 +205,7 @@ const COMMANDS = [
 ];
 
 function runMcpServer() {
+  writePidFile(activeSessionId);
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -179,6 +215,12 @@ function runMcpServer() {
   const send = (msg) => {
     process.stdout.write(JSON.stringify(msg) + '\n');
   };
+
+  rl.on('close', () => {
+    // 宿主关闭了 stdio（正常关闭流程）：立即清理本会话的 overlay 子进程并退出
+    cleanupOnExit();
+    process.exit(0);
+  });
 
   rl.on('line', (line) => {
     const trimmed = line.trim();
