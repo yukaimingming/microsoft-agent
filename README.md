@@ -6,6 +6,34 @@
 
 ---
 
+## 🆕 最近更新 (Recent Changes)
+
+### 1. 设置面板与 Computer Use 开关（Maf 式双栏布局）
+设置弹窗迁移为 Maf 式双栏布局——左侧为搜索框与模块导航，右侧为详情内容，内置「通用 / AI / 电脑」三大模块：
+- **通用**：三档主题切换（系统默认 / 浅色 / 深色），跟随系统或手动固定；
+- **AI**：预设厂商卡片列表 + 「更多提供方」折叠区，当前使用的 Atria 官方预设一目了然，支持添加自定义厂商；
+- **电脑**：Computer Use 开关（**默认关闭**），仅在开启后才挂载 `computer-use` 子智能体与 `agent-desktop` MCP 桌面工具，关闭后立即解除挂载。
+
+| 设置中心 - 通用页（三档主题） | 设置中心 - AI 页（厂商列表） | 设置中心 - 电脑页（Computer Use 关闭态） |
+| :---: | :---: | :---: |
+| ![设置中心通用页](screenshots/settings-general-tab.png) | ![设置中心AI页](screenshots/settings-ai-providers-tab.png) | ![设置中心电脑页](screenshots/settings-computer-use-tab.png) |
+
+### 2. Computer Use 关闭态行为保证 (Off-State Guard)
+- **最高优先级禁令注入**：开关关闭时向主 Agent 提示词注入关闭态约束——即使本会话历史消息中出现过 `computer-use` / `desktop_*` 的成功调用记录（那只是此前开启时的历史轮次），也严禁再次调用任何 `desktop_*` 工具、严禁以 `computer-use` 名义发起委派；
+- **如实告知并引导开启**：用户请求操作电脑桌面时，模型明确提示当前未启用，引导到「设置 → 电脑」页开启 Computer Use 后重试；
+- **严禁变通冒充**：严禁用写文件、执行 Shell、模拟输入等任何其他方式冒充或变通完成桌面操作，一切变通执行直接拒绝。
+
+### 3. 断流中文兜底 (Stream Error Fallback)
+- 任何执行异常都会转换为用户可见的中文 `RUN_ERROR` 事件反馈，不再静默断流；
+- Computer Use 相关异常（含模型幻觉调用未挂载的 `desktop_*` 工具）按真实挂载状态给出明确指引。
+
+### 4. agent-desktop MCP 生命周期改造 (Per-Run Mount & Cleanup)
+- **每轮挂载 / finally 释放**：删除静态缓存 MCP 客户端，改为每轮独立挂载（`MountAsync`）、轮末 `finally` 兜底释放（`ReleaseAsync`），`desktop_*` 工具绑定本轮 MCP 客户端，不跨轮残留；
+- **pidfile + taskkill 进程树清理**：`node mcp-server.js` 启动时经环境变量 `AGENT_DESKTOP_MCP_PIDFILE` 登记 `{pid, session}`，轮末 `taskkill /T /F` 终结整个进程树，并通过 `agent-desktop.exe` 关闭遗留的光标 overlay 渲染子进程与会话，杜绝孤儿进程；
+- **node 侧全路径退出清理**：SIGTERM / SIGINT / stdio 关闭 / uncaughtException 全部触发幂等清理（关闭 overlay 会话 + 删除 pidfile）。
+
+---
+
 ## 1. 架构总览
 
 ```mermaid
@@ -83,8 +111,8 @@ flowchart TD
 ---
 
 ### 2.3 输入框工具栏与模型选择器（黑白双主题与防裁切修复）
-- 彻底解除容器对向上弹出菜单的 `overflow` 裁切限制，支持 13+ 预置模型自由切换。
-- 输入框四周统一直径优美圆角，模型选择器、思考等级、权限审批模式全状态适配深浅色背景。
+- 彻底解除容器对向上弹出菜单的 `overflow` 裁切限制，支持多厂商 20+ 预置模型自由切换。
+- 输入框四周统一直径优美圆角，模型选择器、权限审批模式全状态适配深浅色背景。
 
 | 深色模式（模型下拉列表） | 浅色模式（模型下拉列表） |
 | :---: | :---: |
@@ -93,8 +121,8 @@ flowchart TD
 ---
 
 ### 2.4 原生 ContextMeter 环形占用率仪表与用量弹窗
-- 对齐官方紧凑环形仪表设计，默认显示占用率与当前状态，**点击后弹窗展示详细用量**。
-- 支持实时直观查看上下文占用占比、输入/输出 Token、缓存命中与总消耗明细。
+- 对齐官方紧凑环形仪表设计，嵌入输入框下方统计行（tok/s · 缓存命中 · 上下文占用），**点击后弹窗展示详细用量**。
+- 支持实时直观查看上下文占用占比与构成（系统提示词 / 工具 Schema / 历史消息）、输入/输出 Token、缓存命中与总消耗明细。
 
 | 默认紧凑环形仪表圈 | 点击弹窗查看 Token 构成与占用进度条 |
 | :---: | :---: |
@@ -278,8 +306,8 @@ pnpm --filter @deepagent/web dev --host 127.0.0.1 --port 5175
 
 | 截图编号与文件名 | 测试场景与验证能力 | 核心功能说明 |
 | :--- | :--- | :--- |
-| **01-home-8-capabilities.png** | **主面板 8 大内置能力** | 纯净状态居中呈现 8 大核心建议卡片，模型状态显示 `Atria-Dawn-Preview` |
-| **02-permission-mode-selector.png** | **权限模式选择器** | 验证三种审核策略（`请求批准` / `帮我批准` / `完全访问权限`）切换正常 |
+| **01-home-8-capabilities.png** | **主面板 8 大内置能力** | 纯净状态居中呈现 8 大核心建议卡片，模型状态显示 `Atria-Dawn` |
+| **02-permission-mode-selector.png** | **权限模式选择器** | 验证四种审核策略（`计划模式` / `请求批准` / `帮我批准` / `完全访问权限`）切换正常 |
 | **03-approval-hitl-intercept.png** | **敏感操作人工审批拦截** | 执行命令或修改时触发 `ToolApprovalRequestContent`，弹起批准/拒绝拦截卡片 |
 | **04-approval-resumed-success.png** | **人工审批恢复与执行完成** | 点击批准后调用 `resume` 恢复执行，任务顺利完成并生成输出 |
 | **05-todos-loop-execution.png** | **待办清单与自治循环** | `todos_*` 拆解任务清单，自动循环评估与推进标记 |
