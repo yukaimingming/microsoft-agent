@@ -8,10 +8,11 @@
  * - 电脑（Computer）：Computer Use（电脑桌面自动化操作）启用开关，启用后方可调用电脑操作
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   REASONING_EFFORTS,
   isTwoTierModel,
+  type OAuthProviderKind,
   type ProviderType,
   type PublicProvider,
 } from "@deepagent/shared";
@@ -27,7 +28,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select.js";
-import type { ModelListOutcome, ProviderDraft, TestOutcome } from "./use-provider-settings.js";
+import type {
+  BalanceOutcome,
+  ModelListOutcome,
+  OAuthAccountOutcome,
+  OAuthStartOutcome,
+  OAuthStatusOutcome,
+  ProviderDraft,
+  TestOutcome,
+} from "./use-provider-settings.js";
 import type { Theme, ThemeMode } from "./use-theme.js";
 import {
   PlusIcon,
@@ -47,6 +56,11 @@ import {
   ShieldCheckIcon,
   MousePointerClickIcon,
   TerminalSquareIcon,
+  KeyRoundIcon,
+  LogInIcon,
+  LogOutIcon,
+  WalletIcon,
+  ExternalLinkIcon,
 } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 
@@ -58,6 +72,102 @@ const TYPE_LABEL: Record<ProviderType, string> = {
 };
 
 const CONFIGURABLE_PROTOCOL_TYPES: ProviderType[] = ["openai", "stepfun", "openai-compatible"];
+
+/**
+ * 支持订阅登录（OAuth）的厂商卡片目录。
+ *
+ * 与后端 OAuthProviders 注册表对应：loopback = 本地回环授权码（点按钮直接开浏览器），
+ * device = RFC 8628 设备码（展示授权码 + 打开厂商验证页）。note 为该厂商的
+ * 调用方式/限制标注（如专有协议不兼容当前调用链），必须如实展示，绝不假装支持。
+ */
+interface OAuthProviderCard {
+  kind: OAuthProviderKind;
+  title: string;
+  desc: string;
+  flow: "loopback" | "device";
+  /** 该厂商的调用方式/限制标注（琥珀色警示框展示；缺省表示无特殊限制）。 */
+  note?: string;
+  /** 新建厂商时的预设接入参数（订阅厂商的官方推理端点）。 */
+  preset?: { baseUrl: string; models: string[] };
+}
+
+const OAUTH_PROVIDERS: OAuthProviderCard[] = [
+  {
+    kind: "openai",
+    title: "OpenAI ChatGPT 订阅",
+    flow: "loopback",
+    desc: "使用 ChatGPT Plus / Pro / Team 账号浏览器授权，令牌保存在本地服务端，无需 API Key",
+    preset: { baseUrl: "https://api.openai.com/v1", models: ["gpt-4.1", "gpt-4o"] },
+  },
+  {
+    kind: "anthropic",
+    title: "Anthropic Claude 订阅",
+    flow: "loopback",
+    desc: "使用 Claude Pro / Max 账号浏览器授权（与 Claude Code 相同的 OAuth 流程）",
+    note: "原生 Anthropic 协议（非 OpenAI 兼容），当前推理调用链不直接消费该令牌，需配合兼容网关使用",
+    preset: { baseUrl: "https://api.anthropic.com/v1", models: ["claude-sonnet-4-20250514"] },
+  },
+  {
+    kind: "grok",
+    title: "xAI Grok 订阅",
+    flow: "loopback",
+    desc: "使用 SuperGrok / X Premium+ 订阅账号浏览器授权（与官方 Grok Build CLI 相同的 OAuth 流程）",
+    note: "需要 SuperGrok 或 X Premium+ 订阅；推理走 Grok CLI 专用 OpenAI 兼容代理（cli-chat-proxy.grok.com），api.x.ai 仅支持 API Key",
+    preset: { baseUrl: "https://cli-chat-proxy.grok.com/v1", models: ["grok-4", "grok-code-fast-1"] },
+  },
+  {
+    kind: "google",
+    title: "Google Gemini 订阅",
+    flow: "loopback",
+    desc: "使用 Google 账号浏览器授权（与 Gemini CLI 相同的 OAuth 流程，免费档约 1000 请求/天）",
+    note: "推理走 Code Assist 专有协议（cloudcode-pa.googleapis.com，非 OpenAI 兼容），当前调用链不直接消费该令牌，需配合外部协议代理使用；Antigravity 为独立逆向协议，未接入",
+    preset: { baseUrl: "https://cloudcode-pa.googleapis.com", models: ["gemini-2.5-pro", "gemini-2.5-flash"] },
+  },
+  {
+    kind: "github-copilot",
+    title: "GitHub Copilot 订阅",
+    flow: "device",
+    desc: "在 github.com/login/device 输入设备码完成 GitHub 授权；Copilot 短时令牌由系统用 GitHub 令牌自动续期",
+    note: "设备码流程（无需本地回调端口）；需要 Copilot 订阅，免费账号可用模型有限",
+    preset: { baseUrl: "https://api.githubcopilot.com", models: ["gpt-4.1", "gpt-4o"] },
+  },
+  {
+    kind: "qwen",
+    title: "Qwen 通义订阅",
+    flow: "device",
+    desc: "在 chat.qwen.ai 输入设备码完成授权（与 Qwen Code CLI 相同流程）",
+    note: "需要 Qwen Plus / Pro 订阅（免费账号可登录但不解锁调用）；推理走 OpenAI 兼容端点",
+    preset: { baseUrl: "https://api.qwen.ai/compatible-mode/v1", models: ["qwen3.8-max"] },
+  },
+  {
+    kind: "kimi",
+    title: "Kimi Code 会员",
+    flow: "device",
+    desc: "在 auth.kimi.com 输入设备码完成授权（与 Kimi CLI 相同流程）",
+    note: "需要 Kimi Code 会员（Andante / Moderato / Allegretto 等）；access token 约 15 分钟自动续期",
+    preset: { baseUrl: "https://api.kimi.com/coding/v1", models: ["kimi-for-coding", "k3.1-pro"] },
+  },
+];
+
+/** 币种符号（余额展示用）。 */
+const CURRENCY_SYMBOLS: Record<string, string> = { CNY: "¥", USD: "$" };
+
+/** 金额展示：带币种符号；空值显示占位符。 */
+function moneyText(value?: string | null, currency?: string | null): string {
+  if (value == null || value === "") return "—";
+  return `${CURRENCY_SYMBOLS[currency ?? ""] ?? ""}${value}`;
+}
+
+function formatTokenExpiry(iso?: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+/** 前端预判厂商是否可能支持余额查询（最终以后端判定为准）。 */
+function supportsBalance(provider: { baseUrl: string; label: string }): boolean {
+  return /(deepseek|moonshot|kimi|siliconflow|硅基)/i.test(`${provider.baseUrl} ${provider.label}`);
+}
 
 export type SettingsTab = "general" | "ai" | "computer";
 
@@ -286,7 +396,51 @@ function VendorLogo({ vendorKey, className }: { vendorKey: string; className?: s
       </svg>
     );
   }
+  if (k.includes("github") || k.includes("copilot")) {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" className={cn("size-5 text-foreground", className)}>
+        <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12Z" />
+      </svg>
+    );
+  }
   return <SparklesIcon className={cn("size-4.5 text-emerald-500", className)} />;
+}
+
+/** 列表行内的余额小徽标（仅查询成功且有余额数据时显示）。 */
+function BalanceChip({
+  outcome,
+  loading,
+  onRefresh,
+}: {
+  outcome?: BalanceOutcome;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  if (!outcome || !outcome.ok || !outcome.balance) return null;
+  const symbol = CURRENCY_SYMBOLS[outcome.currency ?? ""] ?? "";
+  return (
+    <span
+      data-testid="balance-chip"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.2 text-[10.5px] font-medium text-emerald-400"
+    >
+      <WalletIcon className="size-3" />
+      <span>
+        {symbol}
+        {outcome.balance}
+      </span>
+      <button
+        type="button"
+        title="刷新余额"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!loading) onRefresh();
+        }}
+        className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-emerald-500/20"
+      >
+        <RefreshCwIcon className={cn("size-2.5", loading && "animate-spin")} />
+      </button>
+    </span>
+  );
 }
 
 interface SettingsModalProps {
@@ -314,6 +468,18 @@ interface SettingsModalProps {
   computerUseEnabled?: boolean;
   /** 切换 Computer Use 启用状态 */
   onComputerUseEnabledChange?: (enabled: boolean) => void;
+  /** 发起订阅登录（OAuth）：后端生成 PKCE 与本地回环回调服务，返回授权页地址 */
+  onStartOAuth?: (kind: OAuthProviderKind, providerId?: string) => Promise<OAuthStartOutcome>;
+  /** 轮询订阅登录状态 */
+  onPollOAuth?: (state: string) => Promise<OAuthStatusOutcome>;
+  /** 刷新订阅登录令牌 */
+  onOAuthRefresh?: (id: string) => Promise<OAuthAccountOutcome>;
+  /** 退出订阅登录 */
+  onOAuthLogout?: (id: string) => Promise<OAuthAccountOutcome>;
+  /** 查询厂商余额 */
+  onFetchBalance?: (id: string) => Promise<BalanceOutcome>;
+  /** 重新拉取厂商列表（订阅登录直接落库后同步快照） */
+  onRefreshProviders?: () => Promise<void>;
   /** 初始打开的选项卡 */
   initialTab?: SettingsTab;
 }
@@ -352,6 +518,7 @@ function draftFromProvider(provider: PublicProvider): ProviderDraft {
     enabled: provider.enabled,
     reasoningEfforts: provider.reasoning?.efforts ?? ["low", "medium", "high"],
     reasoningUnsupported: provider.reasoning?.unsupported ?? false,
+    authMode: provider.authMode ?? "api-key",
   };
 }
 
@@ -397,14 +564,50 @@ function SettingsBody(props: SettingsModalProps) {
   const [testResult, setTestResult] = useState<TestOutcome | null>(null);
   const [manualModel, setManualModel] = useState("");
 
+  // ===== 订阅登录（OAuth）=====
+  const [oauthPhase, setOauthPhase] = useState<"idle" | "starting" | "pending" | "success" | "error">("idle");
+  const [oauthSession, setOauthSession] = useState<{
+    state: string;
+    kind: OAuthProviderKind;
+    flow: "loopback" | "device";
+    /** 设备码流程：等待授权时展示的授权码与验证页。 */
+    userCode?: string;
+    verificationUri?: string;
+    verificationUriComplete?: string;
+  } | null>(null);
+  const [oauthAccount, setOauthAccount] = useState<{
+    kind: OAuthProviderKind;
+    accountEmail?: string | null;
+    planName?: string | null;
+    tokenExpiresAt?: string | null;
+  } | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [oauthFallbackUrl, setOauthFallbackUrl] = useState<string | null>(null);
+  const [oauthBusyKind, setOauthBusyKind] = useState<"refresh" | "logout" | null>(null);
+
+  // ===== 余额查询（缓存：providerId → 结果） =====
+  const [balances, setBalances] = useState<Record<string, BalanceOutcome>>({});
+  const [balanceLoading, setBalanceLoading] = useState<Record<string, boolean>>({});
+
   const lastAutoFetchRef = useRef<{ id: string; baseUrl: string } | null>(null);
+  /** 余额查询中标记（ref：避免闭包读到过期 state）。 */
+  const balanceInFlightRef = useRef<Set<string>>(new Set());
   const isEditing = draft.id !== undefined;
+
+  const resetOAuthState = () => {
+    setOauthPhase("idle");
+    setOauthSession(null);
+    setOauthAccount(null);
+    setOauthError(null);
+    setOauthFallbackUrl(null);
+  };
 
   const resetMessages = () => {
     setError(null);
     setNotice(null);
     setModelError(null);
     setTestResult(null);
+    resetOAuthState();
   };
 
   /** 点击「添加自定义厂商」 */
@@ -432,6 +635,7 @@ function SettingsBody(props: SettingsModalProps) {
       enabled: true,
       reasoningEfforts: ["low", "medium", "high"],
       reasoningUnsupported: false,
+      authMode: "api-key",
     });
     setEditingView(true);
   };
@@ -562,6 +766,177 @@ function SettingsBody(props: SettingsModalProps) {
     setTestResult(result);
   };
 
+  // ===== 订阅登录（OAuth）=====
+
+  /**
+   * 点击「打开浏览器登录」：
+   * - 回环授权码流程（OpenAI / Anthropic / Grok / Google）：先同步开窗避免弹窗拦截，
+   *   再导航到授权页并开始轮询；
+   * - 设备码流程（Copilot / Qwen / Kimi）：打开厂商验证页，授权码展示在面板上由用户输入，
+   *   后端自动轮询令牌端点。
+   * 新建厂商时按卡片预设填充该订阅厂商的官方推理端点与模型列表。
+   */
+  const handleStartOAuth = async (op: OAuthProviderCard) => {
+    if (!props.onStartOAuth) return;
+    setOauthPhase("starting");
+    setOauthError(null);
+    setOauthAccount(null);
+    setOauthFallbackUrl(null);
+    const win = window.open("about:blank", "_blank");
+    const result = await props.onStartOAuth(op.kind, draft.id);
+    if (!result.ok || !result.state) {
+      if (win && !win.closed) win.close();
+      setOauthPhase("error");
+      setOauthError(result.message ?? "发起订阅登录失败");
+      return;
+    }
+    if (result.flow === "device") {
+      // 设备码流程：验证页打开在预开窗口；弹窗被拦截时展示兜底链接
+      const deviceUrl = result.verificationUriComplete || result.verificationUri;
+      if (win && !win.closed && deviceUrl) {
+        win.location.href = deviceUrl;
+      } else if (deviceUrl) {
+        setOauthFallbackUrl(deviceUrl);
+      } else if (win && !win.closed) {
+        win.close();
+      }
+      setOauthSession({
+        state: result.state,
+        kind: op.kind,
+        flow: "device",
+        userCode: result.userCode,
+        verificationUri: result.verificationUri,
+        verificationUriComplete: result.verificationUriComplete,
+      });
+    } else {
+      if (win && !win.closed && result.authorizeUrl) {
+        win.location.href = result.authorizeUrl;
+      } else if (result.authorizeUrl) {
+        // 弹窗被浏览器拦截：展示兜底链接由用户手动打开
+        setOauthFallbackUrl(result.authorizeUrl);
+      }
+      setOauthSession({ state: result.state, kind: op.kind, flow: "loopback" });
+    }
+    // 新建厂商流程：应用该订阅厂商的官方推理端点与默认模型（已有模型列表则不覆盖）
+    if (!draft.id && op.preset) {
+      setDraft((prev) => ({
+        ...prev,
+        type: prev.type === "anthropic" ? "openai-compatible" : prev.type,
+        baseUrl: op.preset!.baseUrl,
+        models: prev.models.length > 0 ? prev.models : [...op.preset!.models],
+        defaultModel: prev.defaultModel ?? op.preset!.models[0] ?? null,
+      }));
+    }
+    setOauthPhase("pending");
+  };
+
+  // 轮询登录结果：2s 一次，直到成功/失败/超时
+  useEffect(() => {
+    if (oauthPhase !== "pending" || !oauthSession || !props.onPollOAuth) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const result = await props.onPollOAuth!(oauthSession.state);
+        if (cancelled) return;
+        if (result.status === "success") {
+          setOauthAccount({
+            kind: oauthSession.kind,
+            accountEmail: result.accountEmail,
+            planName: result.planName,
+            tokenExpiresAt: result.tokenExpiresAt,
+          });
+          setOauthPhase("success");
+          if (result.providerId || draft.id) {
+            // 已直接落到已保存厂商：同步服务端快照
+            await props.onRefreshProviders?.();
+          } else {
+            // 新厂商流程：记住登录会话，保存时消费令牌
+            const loginId = oauthSession.state;
+            setDraft((prev) => ({ ...prev, authMode: "oauth", oauthLoginId: loginId }));
+          }
+        } else if (result.status === "error") {
+          setOauthPhase("error");
+          setOauthError(result.message ?? "订阅登录失败，请重试");
+        } else if (result.status === "expired" || result.status === "missing") {
+          setOauthPhase("error");
+          setOauthError(result.message ?? "登录会话已超时，请重新发起登录");
+        }
+      })();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+    // draft.id 只用于区分新厂商/编辑流程，轮询期间不随草稿变化重启
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oauthPhase, oauthSession]);
+
+  const handleOAuthRefresh = async () => {
+    if (!draft.id || !props.onOAuthRefresh) return;
+    setOauthBusyKind("refresh");
+    const result = await props.onOAuthRefresh(draft.id);
+    setOauthBusyKind(null);
+    if (!result.ok) {
+      setOauthError(result.message ?? "刷新令牌失败");
+      return;
+    }
+    setNotice("订阅令牌已刷新");
+  };
+
+  const handleOAuthLogout = async () => {
+    if (!draft.id || !props.onOAuthLogout) return;
+    setOauthBusyKind("logout");
+    const result = await props.onOAuthLogout(draft.id);
+    setOauthBusyKind(null);
+    if (!result.ok) {
+      setOauthError(result.message ?? "退出登录失败");
+      return;
+    }
+    resetOAuthState();
+    setDraft((prev) => ({ ...prev, authMode: "api-key", oauthLoginId: undefined }));
+    setNotice("已退出订阅登录并清除本地令牌");
+  };
+
+  // ===== 余额查询 =====
+
+  const loadBalance = useCallback(
+    async (id: string) => {
+      if (!props.onFetchBalance || balanceInFlightRef.current.has(id)) return;
+      balanceInFlightRef.current.add(id);
+      setBalanceLoading((prev) => ({ ...prev, [id]: true }));
+      try {
+        const outcome = await props.onFetchBalance(id);
+        setBalances((prev) => ({ ...prev, [id]: outcome }));
+      } finally {
+        balanceInFlightRef.current.delete(id);
+        setBalanceLoading((prev) => ({ ...prev, [id]: false }));
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.onFetchBalance],
+  );
+
+  // 进入详情视图（或切换厂商）时自动查询一次余额
+  useEffect(() => {
+    if (!draft.id) return;
+    if (balances[draft.id] || balanceLoading[draft.id]) return;
+    void loadBalance(draft.id);
+    // 仅在进入详情/切换厂商时触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.id]);
+
+  // AI 列表视图下自动查询疑似支持余额的已配置厂商（DeepSeek/Kimi/SiliconFlow 等）
+  useEffect(() => {
+    if (activeTab !== "ai" || editingView) return;
+    for (const p of providers) {
+      if (!p.hasApiKey) continue;
+      if (balances[p.id] || balanceLoading[p.id]) continue;
+      if (supportsBalance(p)) void loadBalance(p.id);
+    }
+    // 依赖 providers：保存/刷新后自动补查新厂商
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers, activeTab, editingView]);
+
   const handleRemove = async (id: string) => {
     if (!confirm("确定要删除此模型提供商吗？")) return;
     const ok = await props.onRemove(id);
@@ -580,6 +955,24 @@ function SettingsBody(props: SettingsModalProps) {
     if (!draft.defaultModel || !isTwoTierModel(draft.defaultModel)) return null;
     return "提示：模型 step-3.5-flash-2603 仅支持 low 和 high 两档，medium 已被自动禁用。";
   }, [draft]);
+
+  /** 详情区余额卡片的数据与加载态。 */
+  const activeBalance = draft.id ? balances[draft.id] : undefined;
+  const activeBalanceLoading = draft.id ? Boolean(balanceLoading[draft.id]) : false;
+
+  /**
+   * 订阅登录账号信息：优先用本次登录会话的结果，
+   * 其次回退到已保存厂商快照上的账号字段（编辑已登录厂商时）。
+   */
+  const editingOauthProvider = draft.id ? providers.find((p) => p.id === draft.id) ?? null : null;
+  const boundOAuthAccount = oauthAccount ?? (editingOauthProvider?.accountEmail
+    ? {
+        kind: (editingOauthProvider.oauthProvider ?? "openai") as OAuthProviderKind,
+        accountEmail: editingOauthProvider.accountEmail,
+        planName: editingOauthProvider.planName,
+        tokenExpiresAt: editingOauthProvider.tokenExpiresAt,
+      }
+    : null);
 
   const handleSelectThemeMode = (mode: ThemeMode) => {
     if (onThemeModeChange) {
@@ -875,8 +1268,15 @@ function SettingsBody(props: SettingsModalProps) {
                               </span>
                             )}
                           </div>
-                          <div className="truncate text-[12px] text-muted-foreground">
-                            {statusLabel}
+                          <div className="flex items-center gap-2">
+                            <div className="truncate text-[12px] text-muted-foreground">
+                              {statusLabel}
+                            </div>
+                            <BalanceChip
+                              outcome={balances[provider.id]}
+                              loading={Boolean(balanceLoading[provider.id])}
+                              onRefresh={() => void loadBalance(provider.id)}
+                            />
                           </div>
                         </div>
                       </div>
@@ -924,8 +1324,17 @@ function SettingsBody(props: SettingsModalProps) {
                               </span>
                             )}
                           </div>
-                          <div className="truncate text-[12px] text-muted-foreground">
-                            {statusText}
+                          <div className="flex items-center gap-2">
+                            <div className="truncate text-[12px] text-muted-foreground">
+                              {statusText}
+                            </div>
+                            {configured && (
+                              <BalanceChip
+                                outcome={balances[configured.id]}
+                                loading={Boolean(balanceLoading[configured.id])}
+                                onRefresh={() => void loadBalance(configured.id)}
+                              />
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1113,6 +1522,48 @@ function SettingsBody(props: SettingsModalProps) {
                 </label>
               </div>
 
+              {/* 接入方式：API Key / 订阅登录 */}
+              <div className="rounded-xl border border-border bg-background/40 p-3.5 space-y-2.5 settings-auth-mode-box">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-medium text-foreground/90">接入方式</span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="auth-mode-api-key"
+                      onClick={() => setDraft({ ...draft, authMode: "api-key" })}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg border px-3 py-1 text-[11.5px] transition-colors",
+                        draft.authMode === "api-key"
+                          ? "border-ring bg-accent text-accent-foreground font-medium"
+                          : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <KeyRoundIcon className="size-3.5" />
+                      <span>API Key</span>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="auth-mode-oauth"
+                      onClick={() => setDraft({ ...draft, authMode: "oauth" })}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg border px-3 py-1 text-[11.5px] transition-colors",
+                        draft.authMode === "oauth"
+                          ? "border-ring bg-accent text-accent-foreground font-medium"
+                          : "border-border bg-secondary/50 text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <LogInIcon className="size-3.5" />
+                      <span>订阅登录</span>
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {draft.authMode === "oauth"
+                    ? "通过浏览器 OAuth / 设备码授权获取订阅令牌（OpenAI / Claude / Grok / Google / GitHub Copilot / Qwen / Kimi），令牌保存在本地服务端，兼容厂商的下游调用链零改动。"
+                    : "使用厂商控制台签发的 API Key 接入。"}
+                </p>
+              </div>
+
               {/* API Base URL */}
               <label className="block">
                 <span className="mb-1 block text-[11.5px] text-muted-foreground">API Base URL</span>
@@ -1125,23 +1576,192 @@ function SettingsBody(props: SettingsModalProps) {
                 />
               </label>
 
-              {/* API Key */}
-              <label className="block">
-                <span className="mb-1 block text-[11.5px] text-muted-foreground">
-                  API Key {isEditing ? "（留空表示保留当前已配置密钥）" : ""}
-                </span>
-                <input
-                  type="password"
-                  value={draft.apiKey}
-                  onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-                  placeholder={isEditing ? "••••••••（已加密安全保存）" : "输入 sk- 开头的 API Key..."}
-                  autoComplete="off"
-                  className="settings-input w-full rounded-lg border border-input bg-secondary/50 px-3 py-1.5 font-mono text-[12px] text-foreground outline-none focus-visible:border-ring"
-                />
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  安全保障：API Key 仅保存在本地服务端，前端只保留掩码，绝不进入浏览器存储或对外泄露。
-                </span>
-              </label>
+              {draft.authMode === "oauth" ? (
+                /* 订阅登录（OAuth）厂商卡片 */
+                <div
+                  className="rounded-xl border border-border bg-background/40 p-3.5 space-y-3 settings-oauth-box"
+                  data-testid="oauth-login-box"
+                >
+                  <div className="text-[12px] font-medium text-foreground/90">
+                    支持订阅登录的厂商（{OAUTH_PROVIDERS.length}）
+                  </div>
+
+                  {/* 设备码流程指引：展示授权码与验证页入口（后端自动轮询令牌端点） */}
+                  {oauthSession?.flow === "device" && oauthSession.userCode && (
+                    <div
+                      className="rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 space-y-1.5"
+                      data-testid="oauth-device-panel"
+                    >
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium text-sky-400">
+                        <LogInIcon className="size-3.5" />
+                        <span>设备码授权（{OAUTH_PROVIDERS.find((op) => op.kind === oauthSession.kind)?.title}）</span>
+                      </div>
+                      <div className="text-[11.5px] text-muted-foreground">
+                        1. 打开授权页（上方按钮已自动打开；也可访问{" "}
+                        <span className="font-mono">{oauthSession.verificationUri ?? "验证页"}</span>
+                        ）
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-muted-foreground">
+                        <span>2. 在页面输入设备码：</span>
+                        <code
+                          className="rounded-md border border-sky-500/40 bg-background/60 px-2 py-0.5 font-mono text-[15px] font-semibold tracking-widest text-sky-300"
+                          data-testid="oauth-device-user-code"
+                        >
+                          {oauthSession.userCode}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(oauthSession.userCode ?? "");
+                            setNotice("设备码已复制");
+                          }}
+                          className="rounded-md border border-input bg-transparent px-1.5 py-0.5 text-[10.5px] text-foreground hover:bg-accent transition-colors"
+                        >
+                          复制
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        3. 授权完成后自动检测（后端每几秒轮询一次令牌端点，无需手动刷新）
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {OAUTH_PROVIDERS.map((op) => {
+                      const isThisStarting = oauthPhase === "starting" && oauthSession?.kind === op.kind;
+                      const isThisPending = oauthPhase === "pending" && oauthSession?.kind === op.kind;
+                      const boundToThis = boundOAuthAccount?.kind === op.kind ? boundOAuthAccount : null;
+                      return (
+                        <div
+                          key={op.kind}
+                          data-testid={`oauth-card-${op.kind}`}
+                          className="flex flex-col justify-between gap-3 rounded-xl border border-border/70 bg-secondary/15 p-3.5"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-secondary/60">
+                              <VendorLogo vendorKey={op.kind} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-semibold text-foreground">{op.title}</div>
+                              <div className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{op.desc}</div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            {op.note && (
+                              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[10.5px] leading-relaxed text-amber-400">
+                                {op.note}
+                              </div>
+                            )}
+                            {boundToThis && (
+                              <div
+                                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2.5 text-[11.5px] space-y-0.5"
+                                data-testid="oauth-account-card"
+                              >
+                                <div className="flex items-center gap-1.5 font-medium text-emerald-500">
+                                  <CheckIcon className="size-3.5" />
+                                  <span>{oauthAccount ? "订阅登录成功" : "已登录"}</span>
+                                </div>
+                                <div className="text-foreground/90">账号：{boundToThis.accountEmail ?? "未知"}</div>
+                                <div className="text-muted-foreground">套餐：{boundToThis.planName ?? "—"}</div>
+                                <div className="text-muted-foreground">
+                                  令牌过期：{formatTokenExpiry(boundToThis.tokenExpiresAt)}
+                                </div>
+                                {!draft.id && <div className="text-amber-400">点击下方「保存新厂商」完成绑定</div>}
+                              </div>
+                            )}
+                            {oauthError && oauthSession?.kind === op.kind && (
+                              <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-2 text-[11px] text-rose-400">
+                                {oauthError}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              data-testid={`oauth-login-${op.kind}`}
+                              disabled={oauthPhase === "starting" || oauthPhase === "pending"}
+                              onClick={() => void handleStartOAuth(op)}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-input bg-transparent px-3 py-1.5 text-[12px] text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+                            >
+                              {isThisStarting ? (
+                                <>
+                                  <RefreshCwIcon className="size-3.5 animate-spin" />
+                                  <span>{op.flow === "device" ? "正在申请设备码…" : "正在打开浏览器…"}</span>
+                                </>
+                              ) : isThisPending ? (
+                                <>
+                                  <RefreshCwIcon className="size-3.5 animate-spin" />
+                                  <span>
+                                    {op.flow === "device"
+                                      ? "等待你在授权页输入设备码…（自动检测）"
+                                      : "等待浏览器授权完成…（5 分钟内有效）"}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <ExternalLinkIcon className="size-3.5" />
+                                  <span>{op.flow === "device" ? "获取设备码并打开授权页" : "打开浏览器登录"}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {oauthFallbackUrl && (
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11.5px] text-amber-400">
+                      浏览器弹窗被拦截？{" "}
+                      <a href={oauthFallbackUrl} target="_blank" rel="noreferrer" className="font-medium underline">
+                        点击此链接打开授权页
+                      </a>
+                    </div>
+                  )}
+
+                  {/* 已保存厂商的订阅登录管理操作 */}
+                  {boundOAuthAccount && draft.id && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        data-testid="oauth-refresh-btn"
+                        disabled={oauthBusyKind !== null}
+                        onClick={() => void handleOAuthRefresh()}
+                        className="flex items-center gap-1.5 rounded-lg border border-input bg-transparent px-2.5 py-1 text-[11.5px] text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+                      >
+                        <RefreshCwIcon className={cn("size-3", oauthBusyKind === "refresh" && "animate-spin")} />
+                        <span>{oauthBusyKind === "refresh" ? "刷新中…" : "刷新令牌"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="oauth-logout-btn"
+                        disabled={oauthBusyKind !== null}
+                        onClick={() => void handleOAuthLogout()}
+                        className="flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-transparent px-2.5 py-1 text-[11.5px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors"
+                      >
+                        <LogOutIcon className="size-3" />
+                        <span>{oauthBusyKind === "logout" ? "退出中…" : "退出登录"}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* API Key 输入（保持原有交互不变） */
+                <label className="block">
+                  <span className="mb-1 block text-[11.5px] text-muted-foreground">
+                    API Key {isEditing ? "（留空表示保留当前已配置密钥）" : ""}
+                  </span>
+                  <input
+                    type="password"
+                    value={draft.apiKey}
+                    onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
+                    placeholder={isEditing ? "••••••••（已加密安全保存）" : "输入 sk- 开头的 API Key..."}
+                    autoComplete="off"
+                    className="settings-input w-full rounded-lg border border-input bg-secondary/50 px-3 py-1.5 font-mono text-[12px] text-foreground outline-none focus-visible:border-ring"
+                  />
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    安全保障：API Key 仅保存在本地服务端，前端只保留掩码，绝不进入浏览器存储或对外泄露。
+                  </span>
+                </label>
+              )}
 
               {/* 模型列表管理 */}
               <div className="rounded-xl border border-border bg-background/40 p-3.5 space-y-2.5 settings-models-box">
@@ -1286,65 +1906,60 @@ function SettingsBody(props: SettingsModalProps) {
                 {twoTierHint && <p className="text-[11px] text-amber-400">{twoTierHint}</p>}
               </div>
 
-              {/* 底部启用与保存/测试操作栏 */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-                <label className="flex items-center gap-2 text-[12.5px] text-foreground/90 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={draft.enabled}
-                    onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-                    className="accent-emerald-400"
-                  />
-                  <span>启用此提供商</span>
-                </label>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleTest()}
-                    disabled={testing || !isEditing}
-                    className="rounded-lg border border-input bg-transparent px-3 py-1.5 text-[12px] text-foreground hover:bg-accent disabled:opacity-40 transition-colors settings-test-btn"
-                  >
-                    {testing ? "测试中…" : "测试连接"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleSave()}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-1.5 text-[12px] font-medium disabled:opacity-50 transition-colors settings-save-btn"
-                  >
-                    <CheckIcon className="size-3.5 stroke-[2.5]" />
-                    <span>{saving ? "保存中…" : isEditing ? "保存修改" : "保存新厂商"}</span>
-                  </button>
-                </div>
-              </div>
-
-              {testResult && (
+              {/* 余额查询（已保存厂商；DeepSeek / Moonshot Kimi / SiliconFlow 等） */}
+              {isEditing && draft.id && (
                 <div
-                  className={cn(
-                    "rounded-xl border p-2.5 text-[12px]",
-                    testResult.ok
-                      ? "border-emerald-900 bg-emerald-950/50 text-emerald-300"
-                      : "border-rose-900 bg-rose-950/50 text-rose-300",
-                  )}
+                  className="rounded-xl border border-border bg-background/40 p-3.5 space-y-2.5 settings-balance-box"
+                  data-testid="balance-card"
                 >
-                  {testResult.ok ? (
-                    <div>
-                      <p className="font-medium">
-                        连接测试成功！耗时: {testResult.latencyMs}ms，模型: {testResult.modelId}
-                      </p>
-                      {testResult.reply && (
-                        <p className="text-foreground/90 mt-1 font-mono text-[11px] truncate">
-                          响应: {testResult.reply}
-                        </p>
-                      )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-medium text-foreground/90">余额查询</span>
+                    <button
+                      type="button"
+                      data-testid="balance-refresh-btn"
+                      disabled={activeBalanceLoading}
+                      onClick={() => draft.id && void loadBalance(draft.id)}
+                      className="flex items-center gap-1.5 rounded-lg border border-input bg-transparent px-2.5 py-1 text-[11.5px] text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+                    >
+                      <RefreshCwIcon className={cn("size-3", activeBalanceLoading && "animate-spin")} />
+                      <span>{activeBalanceLoading ? "查询中…" : "刷新余额"}</span>
+                    </button>
+                  </div>
+                  {activeBalance?.ok ? (
+                    <div data-testid="balance-content">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-[24px] font-semibold leading-none text-foreground">
+                          {moneyText(activeBalance.balance, activeBalance.currency)}
+                        </span>
+                        <span className="text-[12px] text-muted-foreground">
+                          {activeBalance.currency ?? ""}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+                        {activeBalance.granted != null && (
+                          <span>赠送额度：{moneyText(activeBalance.granted, activeBalance.currency)}</span>
+                        )}
+                        {activeBalance.toppedUp != null && (
+                          <span>充值余额：{moneyText(activeBalance.toppedUp, activeBalance.currency)}</span>
+                        )}
+                        {activeBalance.used != null && <span>已使用：{moneyText(activeBalance.used, activeBalance.currency)}</span>}
+                        {activeBalance.vendor && (
+                          <span className="uppercase tracking-wide">{activeBalance.vendor}</span>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    <p className="font-medium">测试失败: {testResult.message}</p>
+                    <p className="rounded-lg border border-border/60 bg-background/40 px-3 py-2 text-[11.5px] text-muted-foreground">
+                      {activeBalance
+                        ? activeBalance.message ?? "该厂商暂不支持余额查询。"
+                        : activeBalanceLoading
+                          ? "正在查询余额…"
+                          : "点击「刷新余额」查询当前厂商余额（当前支持 DeepSeek / Moonshot Kimi / SiliconFlow）。"}
+                    </p>
                   )}
                 </div>
               )}
+
             </div>
           )}
 
@@ -1449,6 +2064,73 @@ function SettingsBody(props: SettingsModalProps) {
             </div>
           )}
         </div>
+
+        {/* AI 厂商表单视图：固定底部操作栏（启用/测试连接/保存），不随表单内容滚动。
+            作为 main（flex-col）的 shrink-0 子元素钉在弹窗底部，滚动区 flex-1 自动避让。 */}
+        {activeTab === "ai" && editingView && (
+          <div
+            className="shrink-0 border-t border-border bg-card px-7 pb-5 pt-3"
+            data-testid="settings-ai-form-action-bar"
+          >
+            {testResult && (
+              <div
+                className={cn(
+                  "mb-2.5 rounded-xl border p-2.5 text-[12px]",
+                  testResult.ok
+                    ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-500"
+                    : "border-rose-500/60 bg-rose-500/10 text-rose-400",
+                )}
+              >
+                {testResult.ok ? (
+                  <div>
+                    <p className="font-medium">
+                      连接测试成功！耗时: {testResult.latencyMs}ms，模型: {testResult.modelId}
+                    </p>
+                    {testResult.reply && (
+                      <p className="text-foreground/90 mt-1 font-mono text-[11px] truncate">
+                        响应: {testResult.reply}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="font-medium">测试失败: {testResult.message}</p>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-[12.5px] text-foreground/90 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={draft.enabled}
+                  onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
+                  className="accent-emerald-400"
+                />
+                <span>启用此提供商</span>
+              </label>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleTest()}
+                  disabled={testing || !isEditing}
+                  className="rounded-lg border border-input bg-transparent px-3 py-1.5 text-[12px] text-foreground hover:bg-accent disabled:opacity-40 transition-colors settings-test-btn"
+                >
+                  {testing ? "测试中…" : "测试连接"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleSave()}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-1.5 text-[12px] font-medium disabled:opacity-50 transition-colors settings-save-btn"
+                >
+                  <CheckIcon className="size-3.5 stroke-[2.5]" />
+                  <span>{saving ? "保存中…" : isEditing ? "保存修改" : "保存新厂商"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

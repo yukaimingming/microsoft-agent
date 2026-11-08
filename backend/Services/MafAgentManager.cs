@@ -15,6 +15,7 @@ public sealed class MafAgentManager
     private readonly IConfiguration _configuration;
     private readonly ProviderService _providerService;
     private readonly WorkspaceService _workspaceService;
+    private readonly OAuthService _oauthService;
     private readonly ILogger<MafAgentManager> _logger;
 
     // 会话与执行管理
@@ -33,11 +34,13 @@ public sealed class MafAgentManager
         IConfiguration configuration,
         ProviderService providerService,
         WorkspaceService workspaceService,
+        OAuthService oauthService,
         ILogger<MafAgentManager> logger)
     {
         _configuration = configuration;
         _providerService = providerService;
         _workspaceService = workspaceService;
+        _oauthService = oauthService;
         _logger = logger;
     }
 
@@ -118,6 +121,22 @@ public sealed class MafAgentManager
 
         try
         {
+            // 0. 订阅登录（OAuth）厂商调用准备：解析此刻可用的密钥（Copilot 动态 Bearer、
+            //    Qwen/Kimi 到期自动刷新）与必须附加的 HTTP 头；协议不兼容的厂商
+            //    （Google / Anthropic 原生协议）直接拒绝本轮调用，不假装支持。
+            IReadOnlyDictionary<string, string> oauthExtraHeaders = new Dictionary<string, string>();
+            if (provider is { AuthMode: "oauth" })
+            {
+                var callPrep = await _oauthService.PrepareForCallAsync(provider, ct);
+                if (callPrep.BlockedMessage != null)
+                {
+                    await adapter.EmitRunErrorAsync(callPrep.BlockedMessage);
+                    return;
+                }
+                if (!string.IsNullOrWhiteSpace(callPrep.ApiKey)) llm.ApiKey = callPrep.ApiKey;
+                if (callPrep.ExtraHeaders.Count > 0) oauthExtraHeaders = callPrep.ExtraHeaders;
+            }
+
         // 1. 初始化文件存储与权限审核模式
         var permissionMode = forwardedProps.TryGetValue("permissionMode", out var pmObj) && pmObj is not null
             ? pmObj.ToString()?.ToLowerInvariant()
@@ -253,7 +272,7 @@ public sealed class MafAgentManager
             var isResume = input.Resume != null && input.Resume.Count > 0;
 
             // 6. 装配 ChatClient 与 AIAgent（若是审批恢复续跑，必须复用同一个 AIAgent 实例，以确保 ToolApprovalAgent 内部挂起状态匹配！）
-            var chatClient = llm.CreateChatClient();
+            var chatClient = llm.CreateChatClient(oauthExtraHeaders.Count > 0 ? oauthExtraHeaders : null);
             AIAgent agent;
             // 审批续跑复用既有 Agent；但若本轮 webSearch 开关与建 Agent 时不一致，
             // 必须重建（工具列表在创建时固化），保证开关即时生效。
@@ -276,7 +295,9 @@ public sealed class MafAgentManager
             else
             {
                 agent = chatClient.AsHarnessAgent(FileAgentFactory.BuildOptions(
-                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot, planEnabled, computerUseTools));
+                    fileStore, chatClient, fileAccess, webSearchTools, memoryStore, workspacePersona, reflectionState, permissionMode ?? "ask", workspaceRoot, planEnabled, computerUseTools,
+                    // llm.ModelId 是本轮解析后的实际模型（用户选择 > 厂商默认 > 全局默认），供运行时身份澄清使用
+                    llm.ModelId));
                 _agents[threadId] = agent;
                 _agentWebSearch[threadId] = webSearchRequested;
                 _agentPlanEnabled[threadId] = planEnabled;

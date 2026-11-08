@@ -14,6 +14,27 @@ import { REASONING_EFFORTS, type ReasoningEffort } from "./reasoning.js";
 export const PROVIDER_TYPES = ["stepfun", "openai", "anthropic", "openai-compatible"] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 
+/** 接入方式：API Key 密钥接入 / 订阅登录（OAuth）接入。 */
+export const AUTH_MODES = ["api-key", "oauth"] as const;
+export type AuthMode = (typeof AUTH_MODES)[number];
+
+/**
+ * 支持订阅登录（OAuth）的厂商。
+ *
+ * 与后端 OAuthProviders 注册表一一对应（openai / anthropic 为原有两家，
+ * grok / google 为回环授权码，github-copilot / qwen / kimi 为 RFC 8628 设备码）。
+ */
+export const OAUTH_PROVIDER_KINDS = [
+  "openai",
+  "anthropic",
+  "grok",
+  "google",
+  "github-copilot",
+  "qwen",
+  "kimi",
+] as const;
+export type OAuthProviderKind = (typeof OAUTH_PROVIDER_KINDS)[number];
+
 /** 推理强度能力声明。 */
 export interface ReasoningCapabilities {
   /** 该提供商实际支持的档位，顺序即 UI 顺序。 */
@@ -45,6 +66,18 @@ export interface ProviderConfig {
   /** 创建/更新时间（ISO 字符串）。 */
   createdAt: string;
   updatedAt: string;
+  /** 接入方式（默认 api-key）。 */
+  authMode?: AuthMode;
+  /** 订阅登录提供方。 */
+  oauthProvider?: OAuthProviderKind | null;
+  /** OAuth 刷新令牌（仅服务端持有，绝不外泄）。 */
+  refreshToken?: string | null;
+  /** access token 过期时间（ISO 字符串）。 */
+  tokenExpiresAt?: string | null;
+  /** 订阅账号邮箱。 */
+  accountEmail?: string | null;
+  /** 订阅套餐名。 */
+  planName?: string | null;
 }
 
 /** 返回给前端的提供商信息（密钥已掩码）。 */
@@ -63,6 +96,18 @@ export interface PublicProvider {
   reasoning?: ReasoningCapabilities;
   createdAt: string;
   updatedAt: string;
+  /** 接入方式（默认 api-key）。 */
+  authMode?: AuthMode;
+  /** 订阅登录提供方。 */
+  oauthProvider?: OAuthProviderKind | null;
+  /** 是否已保存刷新令牌（可刷新令牌/退出登录）。 */
+  hasRefreshToken?: boolean;
+  /** access token 过期时间（ISO 字符串）。 */
+  tokenExpiresAt?: string | null;
+  /** 订阅账号邮箱。 */
+  accountEmail?: string | null;
+  /** 订阅套餐名。 */
+  planName?: string | null;
 }
 
 /** 掩码 API Key：只保留前 4 位与后 4 位。 */
@@ -88,6 +133,12 @@ export function toPublicProvider(config: ProviderConfig): PublicProvider {
     ...(config.reasoning ? { reasoning: config.reasoning } : {}),
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
+    authMode: config.authMode ?? "api-key",
+    ...(config.oauthProvider ? { oauthProvider: config.oauthProvider } : {}),
+    hasRefreshToken: Boolean(config.refreshToken && config.refreshToken.trim().length > 0),
+    ...(config.tokenExpiresAt ? { tokenExpiresAt: config.tokenExpiresAt } : {}),
+    ...(config.accountEmail ? { accountEmail: config.accountEmail } : {}),
+    ...(config.planName ? { planName: config.planName } : {}),
   };
 }
 
@@ -119,6 +170,10 @@ export const providerInputSchema = z.object({
   defaultModel: z.string().trim().min(1, "默认模型 ID 不能为空").nullable().default(null),
   enabled: z.boolean().default(true),
   reasoning: reasoningCapabilitiesSchema.optional(),
+  /** 接入方式；省略视为 api-key。 */
+  authMode: z.enum(AUTH_MODES).optional(),
+  /** OAuth 登录会话 ID：保存时消费对应会话里已换好的令牌。 */
+  oauthLoginId: z.string().optional(),
 });
 
 /** 更新提供商时允许的字段（apiKey 可省略以保留原值）。 */

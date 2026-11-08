@@ -406,6 +406,31 @@ public sealed class ProviderConfig
 
     [JsonPropertyName("updatedAt")]
     public string UpdatedAt { get; set; } = DateTime.UtcNow.ToString("o");
+
+    // ===== 订阅登录（OAuth）扩展字段，持久化跟随 providers.json =====
+    /// <summary>接入方式：api-key（默认）| oauth（订阅登录）。</summary>
+    [JsonPropertyName("authMode")]
+    public string AuthMode { get; set; } = "api-key";
+
+    /// <summary>订阅登录提供方：openai | anthropic。</summary>
+    [JsonPropertyName("oauthProvider")]
+    public string? OauthProvider { get; set; }
+
+    /// <summary>OAuth 刷新令牌（明文随 providers.json 落盘，与 apiKey 同级安全约束）。</summary>
+    [JsonPropertyName("refreshToken")]
+    public string? RefreshToken { get; set; }
+
+    /// <summary>access token 过期时间（ISO-8601）。</summary>
+    [JsonPropertyName("tokenExpiresAt")]
+    public string? TokenExpiresAt { get; set; }
+
+    /// <summary>订阅账号邮箱。</summary>
+    [JsonPropertyName("accountEmail")]
+    public string? AccountEmail { get; set; }
+
+    /// <summary>订阅套餐名（如 ChatGPT Plus / Claude Pro）。</summary>
+    [JsonPropertyName("planName")]
+    public string? PlanName { get; set; }
 }
 
 public sealed class PublicProvider
@@ -451,6 +476,31 @@ public sealed class PublicProvider
 
     [JsonPropertyName("updatedAt")]
     public string UpdatedAt { get; set; } = DateTime.UtcNow.ToString("o");
+
+    // ===== 订阅登录状态与账号信息（不含明文令牌/刷新令牌） =====
+    /// <summary>接入方式（默认 api-key）。</summary>
+    [JsonPropertyName("authMode")]
+    public string AuthMode { get; set; } = "api-key";
+
+    /// <summary>订阅登录提供方。</summary>
+    [JsonPropertyName("oauthProvider")]
+    public string? OauthProvider { get; set; }
+
+    /// <summary>是否已保存刷新令牌（可刷新令牌/退出登录）。</summary>
+    [JsonPropertyName("hasRefreshToken")]
+    public bool HasRefreshToken { get; set; }
+
+    /// <summary>access token 过期时间（ISO 字符串）。</summary>
+    [JsonPropertyName("tokenExpiresAt")]
+    public string? TokenExpiresAt { get; set; }
+
+    /// <summary>订阅账号邮箱。</summary>
+    [JsonPropertyName("accountEmail")]
+    public string? AccountEmail { get; set; }
+
+    /// <summary>订阅套餐名。</summary>
+    [JsonPropertyName("planName")]
+    public string? PlanName { get; set; }
 }
 
 public sealed class ProviderInput
@@ -484,6 +534,14 @@ public sealed class ProviderInput
 
     [JsonPropertyName("reasoning")]
     public object? Reasoning { get; set; }
+
+    /// <summary>接入方式：api-key | oauth；为空表示沿用原值。</summary>
+    [JsonPropertyName("authMode")]
+    public string? AuthMode { get; set; }
+
+    /// <summary>OAuth 登录会话 ID（state）：保存时消费对应会话里换好的令牌。</summary>
+    [JsonPropertyName("oauthLoginId")]
+    public string? OauthLoginId { get; set; }
 }
 
 public sealed class BrowseFolderItem

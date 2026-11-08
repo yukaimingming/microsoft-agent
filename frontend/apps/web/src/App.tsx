@@ -1064,6 +1064,12 @@ export function App() {
         onThemeModeChange={setThemeMode}
         computerUseEnabled={computerUseEnabled}
         onComputerUseEnabledChange={setComputerUseEnabled}
+        onStartOAuth={settings.startOAuthLogin}
+        onPollOAuth={settings.pollOAuthStatus}
+        onOAuthRefresh={settings.refreshOAuthToken}
+        onOAuthLogout={settings.logoutOAuth}
+        onFetchBalance={settings.fetchBalance}
+        onRefreshProviders={settings.refresh}
       />
 
       {/* 个人微信 ClawBot 扫码绑定弹窗 (iLink 协议) */}

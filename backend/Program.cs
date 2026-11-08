@@ -12,6 +12,9 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddEnvironmentVariables("MAF_HARNESS_");
 
+// Google OAuth 凭据经配置注入（appsettings.json OAuth 节，可被 MAF_HARNESS_OAuth__* 环境变量覆盖），源码不落明文
+OAuthProviders.Initialize(builder.Configuration);
+
 // 绑定端口为 8788（隔离 agentscope 的 8787 端口）
 builder.WebHost.UseUrls("http://0.0.0.0:8788");
 
@@ -34,8 +37,11 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 });
 
 // 核心服务依赖注入
+builder.Services.AddHttpClient();
 builder.Services.AddSingleton<WorkspaceService>();
 builder.Services.AddSingleton<ProviderService>();
+builder.Services.AddSingleton<ProviderBalanceService>();
+builder.Services.AddSingleton<OAuthService>();
 builder.Services.AddSingleton<WorkbenchService>();
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddSingleton<MafAgentManager>();

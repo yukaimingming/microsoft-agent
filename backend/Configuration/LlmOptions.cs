@@ -32,7 +32,12 @@ public sealed class LlmOptions
     /// 返回 <see cref="IChatClient"/> 而不是具体 Agent。
     /// Program.cs 是唯一组装的地方，Agent 定义在 Infrastructure/Agents 里消费它。
     /// </summary>
-    public IChatClient CreateChatClient()
+    /// <param name="extraHeaders">
+    /// 订阅登录厂商调用下游时必须附加的 HTTP 头（如 Grok 的 X-XAI-Token-Auth、
+    /// Copilot 的 editor/copilot 系列头），由 OAuthService.PrepareForCallAsync 给出；
+    /// 其余厂商传 null，管道零改动。
+    /// </param>
+    public IChatClient CreateChatClient(IReadOnlyDictionary<string, string>? extraHeaders = null)
     {
         var key = string.IsNullOrWhiteSpace(ApiKey)
             ? Environment.GetEnvironmentVariable("MAF_HARNESS_LLM_API_KEY") ?? string.Empty
@@ -53,7 +58,9 @@ public sealed class LlmOptions
                 // "Unknown ChatToolCallKind value"。SseFixupHandler 在响应流上按行
                 // 把 "type":"" 修补成 "type":"function"，流式即可正常解析——
                 // 不需要降级到非流式，打字机效果保留。
-                Transport = new HttpClientPipelineTransport(new HttpClient(new SseFixupHandler())),
+                // 订阅登录厂商需要附加头时在其外层再包一层注入 handler，
+                // 其余厂商保持原管道（等价于 new HttpClient(new SseFixupHandler())）。
+                Transport = new HttpClientPipelineTransport(new HttpClient(WrapHandlers(extraHeaders))),
             });
 
         return client.GetChatClient(ModelId).AsIChatClient().AsBuilder()
@@ -61,6 +68,12 @@ public sealed class LlmOptions
             .Use(static inner => new ReasoningHistoryStripper(inner))
             .Build();
     }
+
+    /// <summary>按需在 SseFixupHandler 外层叠加附加头注入 handler（无附加头时零包装）。</summary>
+    private static HttpMessageHandler WrapHandlers(IReadOnlyDictionary<string, string>? extraHeaders) =>
+        extraHeaders is { Count: > 0 }
+            ? new ExtraHeadersHandler(new SseFixupHandler(), extraHeaders)
+            : new SseFixupHandler();
 }
 
 /// <summary>
@@ -91,6 +104,32 @@ internal sealed class ReasoningHistoryStripper(IChatClient inner) : DelegatingCh
                     AdditionalProperties = m.AdditionalProperties,
                 }
             : m).ToList();
+}
+
+/// <summary>
+/// 订阅登录厂商的附加头注入：把注册表声明的 HTTP 头（如 Grok 的 X-XAI-Token-Auth /
+/// x-authenticateresponse、Copilot 的 editor/copilot 系列头）加到每一条出站请求上。
+/// 用 TryAddWithoutValidation 兼容 user-agent 等受控头与自定义头的混排。
+/// </summary>
+internal sealed class ExtraHeadersHandler : DelegatingHandler
+{
+    private readonly IReadOnlyDictionary<string, string> _extraHeaders;
+
+    public ExtraHeadersHandler(HttpMessageHandler inner, IReadOnlyDictionary<string, string> extraHeaders)
+        : base(inner)
+    {
+        _extraHeaders = extraHeaders;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        foreach (var (name, value) in _extraHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(name, value);
+        }
+        return base.SendAsync(request, cancellationToken);
+    }
 }
 
 /// <summary>

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   DEFAULT_BASE_URLS,
+  type OAuthProviderKind,
   type ProviderType,
   type PublicProvider,
   type ReasoningCapabilities,
@@ -37,6 +38,62 @@ export interface TestOutcome {
   reasoningUnsupported?: boolean;
 }
 
+/** 发起订阅登录（OAuth）的结果。 */
+export interface OAuthStartOutcome {
+  ok: boolean;
+  /** 登录流程：回环授权码（authorizeUrl）| 设备码（userCode + verificationUri）。 */
+  flow?: "loopback" | "device";
+  authorizeUrl?: string;
+  state?: string;
+  loginId?: string;
+  expiresInSeconds?: number;
+  /** 设备码流程：展示给用户的授权码与验证页。 */
+  userCode?: string;
+  verificationUri?: string;
+  verificationUriComplete?: string;
+  intervalSeconds?: number;
+  message?: string;
+}
+
+/** 轮询订阅登录状态的结果。 */
+export interface OAuthStatusOutcome {
+  ok: boolean;
+  status: "pending" | "success" | "error" | "expired" | "missing";
+  type?: OAuthProviderKind;
+  flow?: "loopback" | "device";
+  loginId?: string;
+  providerId?: string | null;
+  accountEmail?: string | null;
+  planName?: string | null;
+  tokenExpiresAt?: string | null;
+  /** 设备码流程：等待授权时展示的授权码与验证页。 */
+  userCode?: string;
+  verificationUri?: string;
+  verificationUriComplete?: string;
+  expiresInSeconds?: number;
+  intervalSeconds?: number;
+  message?: string;
+}
+
+/** 订阅登录令牌刷新/退出的结果。 */
+export interface OAuthAccountOutcome {
+  ok: boolean;
+  provider?: PublicProvider;
+  message?: string;
+}
+
+/** 厂商余额查询结果（统一结构）。 */
+export interface BalanceOutcome {
+  ok: boolean;
+  vendor?: string;
+  currency?: string | null;
+  balance?: string | null;
+  granted?: string | null;
+  toppedUp?: string | null;
+  used?: string | null;
+  message?: string;
+}
+
 /** 新建/编辑表单的草稿。 */
 export interface ProviderDraft {
   id?: string;
@@ -49,6 +106,10 @@ export interface ProviderDraft {
   enabled: boolean;
   reasoningEfforts: ReasoningEffort[];
   reasoningUnsupported: boolean;
+  /** 接入方式：api-key（默认）| oauth（订阅登录）。 */
+  authMode: "api-key" | "oauth";
+  /** OAuth 登录会话 ID（登录成功后保存新厂商时消费）。 */
+  oauthLoginId?: string;
 }
 
 function draftFor(type: ProviderType, label: string): ProviderDraft {
@@ -62,6 +123,7 @@ function draftFor(type: ProviderType, label: string): ProviderDraft {
     enabled: true,
     reasoningEfforts: ["low", "medium", "high"],
     reasoningUnsupported: false,
+    authMode: "api-key",
   };
 }
 
@@ -150,11 +212,17 @@ export function useProviderSettings() {
         defaultModel: draft.defaultModel,
         enabled: draft.enabled,
         reasoning,
-        // 新建时必须带密钥；编辑时留空表示保留原值。
+        authMode: draft.authMode,
+        // 订阅登录（新建厂商流程）：保存时消费登录会话里已换好的令牌
+        ...(draft.authMode === "oauth" && draft.oauthLoginId ? { oauthLoginId: draft.oauthLoginId } : {}),
+        // 新建时必须带密钥；编辑时留空表示保留原值；订阅登录模式下密钥来自 OAuth 令牌。
         ...(draft.apiKey.trim().length > 0 ? { apiKey: draft.apiKey.trim() } : {}),
       };
-      if (!draft.id && payload.apiKey === undefined) {
+      if (!draft.id && payload.apiKey === undefined && draft.authMode !== "oauth") {
         return { ok: false, error: "请输入 API Key" };
+      }
+      if (!draft.id && draft.authMode === "oauth" && !draft.oauthLoginId) {
+        return { ok: false, error: "请先完成订阅登录，再保存厂商配置" };
       }
       try {
         const response = await fetch(
@@ -263,6 +331,89 @@ export function useProviderSettings() {
     [providers, refresh],
   );
 
+  /** 发起订阅登录：后端生成 PKCE 与本地回环回调服务，返回授权页地址。 */
+  const startOAuthLogin = useCallback(
+    async (kind: OAuthProviderKind, providerId?: string): Promise<OAuthStartOutcome> => {
+      try {
+        const response = await fetch("/api/providers/oauth/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: kind, ...(providerId ? { providerId } : {}) }),
+        });
+        const body = (await response.json()) as OAuthStartOutcome;
+        if (!response.ok) return { ok: false, message: body.message ?? `发起登录失败（HTTP ${response.status}）` };
+        return body;
+      } catch (caught) {
+        return { ok: false, message: caught instanceof Error ? caught.message : String(caught) };
+      }
+    },
+    [],
+  );
+
+  /** 轮询订阅登录状态（pending / success / error / expired）。 */
+  const pollOAuthStatus = useCallback(async (state: string): Promise<OAuthStatusOutcome> => {
+    try {
+      const response = await fetch(`/api/providers/oauth/status?state=${encodeURIComponent(state)}`);
+      const body = (await response.json()) as OAuthStatusOutcome;
+      if (!response.ok) {
+        return { ok: false, status: "missing", message: body.message ?? "登录会话不存在或已被清理" };
+      }
+      return body;
+    } catch (caught) {
+      return { ok: false, status: "error", message: caught instanceof Error ? caught.message : String(caught) };
+    }
+  }, []);
+
+  /** 刷新订阅登录令牌（用已保存的 refresh_token）。 */
+  const refreshOAuthToken = useCallback(
+    async (id: string): Promise<OAuthAccountOutcome> => {
+      try {
+        const response = await fetch("/api/providers/oauth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ providerId: id }),
+        });
+        const body = (await response.json()) as OAuthAccountOutcome;
+        if (body.ok) await refresh();
+        return body;
+      } catch (caught) {
+        return { ok: false, message: caught instanceof Error ? caught.message : String(caught) };
+      }
+    },
+    [refresh],
+  );
+
+  /** 退出订阅登录：清除令牌与账号信息，回退 API Key 模式。 */
+  const logoutOAuth = useCallback(
+    async (id: string): Promise<OAuthAccountOutcome> => {
+      try {
+        const response = await fetch("/api/providers/oauth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ providerId: id }),
+        });
+        const body = (await response.json()) as OAuthAccountOutcome;
+        if (body.ok) await refresh();
+        return body;
+      } catch (caught) {
+        return { ok: false, message: caught instanceof Error ? caught.message : String(caught) };
+      }
+    },
+    [refresh],
+  );
+
+  /** 查询厂商余额（DeepSeek / Moonshot Kimi / SiliconFlow 等支持查询的厂商）。 */
+  const fetchBalance = useCallback(async (id: string): Promise<BalanceOutcome> => {
+    try {
+      const response = await fetch(`/api/providers/${encodeURIComponent(id)}/balance`);
+      const body = (await response.json()) as BalanceOutcome;
+      if (!response.ok) return { ok: false, message: body.message ?? `查询失败（HTTP ${response.status}）` };
+      return body;
+    } catch (caught) {
+      return { ok: false, message: caught instanceof Error ? caught.message : String(caught) };
+    }
+  }, []);
+
   return {
     providers,
     loading,
@@ -282,6 +433,11 @@ export function useProviderSettings() {
     fetchModelList,
     testConnection,
     addModel,
+    startOAuthLogin,
+    pollOAuthStatus,
+    refreshOAuthToken,
+    logoutOAuth,
+    fetchBalance,
     draftFor,
   };
 }

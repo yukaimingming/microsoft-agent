@@ -93,6 +93,66 @@ function getModelSupportedEfforts(
   return modelEfforts;
 }
 
+/**
+ * 模型下拉的归并分组：按厂商 label 聚合（重复添加同名厂商时兜底合并为一个分组）。
+ */
+interface MergedProviderGroup {
+  /** 分组键（label），同 label 的配置必然聚进同一组 */
+  key: string;
+  /** 厂商标签（取自分组内第一个配置） */
+  label: string;
+  /** 分组内原始 provider 配置（保持后端返回顺序） */
+  providers: PublicProvider[];
+  /** 合并去重后的模型列表 */
+  models: string[];
+  /** 分组内存在多个不同 baseUrl 时用于标题栏区分展示（否则为 null） */
+  baseUrlNote: string | null;
+  /** 任一同名配置已配 Key 即算就绪 */
+  ready: boolean;
+}
+
+/** 按厂商 label 归并 providers：模型合并去重，baseUrl 不一致时生成区分标注。 */
+function mergeProviderGroups(providers: PublicProvider[]): MergedProviderGroup[] {
+  const groups: MergedProviderGroup[] = [];
+  const byLabel = new Map<string, MergedProviderGroup>();
+  for (const prov of providers) {
+    if (!prov.enabled || !prov.models || prov.models.length === 0) continue;
+    let group = byLabel.get(prov.label);
+    if (!group) {
+      group = { key: prov.label, label: prov.label, providers: [], models: [], baseUrlNote: null, ready: false };
+      byLabel.set(prov.label, group);
+      groups.push(group);
+    }
+    group.providers.push(prov);
+    for (const m of prov.models) {
+      if (!group.models.includes(m)) group.models.push(m);
+    }
+    group.ready = group.ready || prov.hasApiKey;
+  }
+  for (const group of groups) {
+    const baseUrls = [...new Set(group.providers.map((p) => p.baseUrl))];
+    if (baseUrls.length > 1) group.baseUrlNote = baseUrls.join(" · ");
+  }
+  return groups;
+}
+
+/**
+ * 归并分组内的模型点击时定位实际 provider：
+ * 优先当前 activeProviderId（须含该模型），其次该分组下第一个启用且已配 Key 的 provider。
+ */
+function resolveGroupModelProvider(
+  group: MergedProviderGroup,
+  model: string,
+  activeProviderId?: string | null,
+): PublicProvider {
+  const withModel = group.providers.filter((p) => p.models.includes(model));
+  const active = activeProviderId
+    ? withModel.find((p) => p.id === activeProviderId)
+    : undefined;
+  if (active) return active;
+  return withModel.find((p) => p.enabled && p.hasApiKey) ?? withModel[0] ?? group.providers[0]!;
+}
+
 interface ChatInputProps {
   /** 当前会话消息列表，用于计算精准统计与 Token 消耗 */
   messages?: ChatMessage[];
@@ -1058,11 +1118,9 @@ function ChatInputContent({
                       className="workspace-dropdown-panel composer-menu absolute bottom-full mb-2 left-0 z-50 w-72 sm:w-80 rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-2xl dark:border-zinc-800 dark:bg-[#242427] dark:text-zinc-100 p-1.5 animate-in fade-in zoom-in-95 duration-100 overflow-visible"
                     >
                       {(() => {
-                        const groupedProviders = providers.filter(
-                          (p) => p.enabled && p.models && p.models.length > 0
-                        );
-                        const totalGroupedModels = groupedProviders.reduce(
-                          (acc, p) => acc + p.models.length,
+                        const mergedGroups = mergeProviderGroups(providers);
+                        const totalGroupedModels = mergedGroups.reduce(
+                          (acc, g) => acc + g.models.length,
                           0
                         );
 
@@ -1072,58 +1130,76 @@ function ChatInputContent({
                               <span>模型</span>
                               {(totalGroupedModels > 0 || availableModels.length > 0) && (
                                 <span className="font-normal text-[10.5px]">
-                                  {groupedProviders.length > 0
-                                    ? `${groupedProviders.length} 厂商 · ${totalGroupedModels} 模型`
+                                  {mergedGroups.length > 0
+                                    ? `${mergedGroups.length} 厂商 · ${totalGroupedModels} 模型`
                                     : `${availableModels.length} 模型`}
                                 </span>
                               )}
                             </div>
 
                             <div className="max-h-72 overflow-y-auto space-y-2 my-1 pr-0.5 scrollbar-thin">
-                              {groupedProviders.length > 0 ? (
-                                groupedProviders.map((prov) => {
-                                  const isCurrentProvider = prov.id === activeProviderId;
+                              {mergedGroups.length > 0 ? (
+                                mergedGroups.map((group) => {
+                                  const primary = group.providers[0]!;
+                                  const isCurrentProvider = group.providers.some(
+                                    (p) => p.id === activeProviderId
+                                  );
                                   return (
                                     <div
-                                      key={prov.id}
-                                      data-testid={`provider-group-${prov.id}`}
+                                      key={group.key}
+                                      data-testid={`provider-group-${primary.id}`}
                                       className="space-y-0.5"
                                     >
-                                      {/* 厂商分组标题栏 */}
-                                      <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50/80 dark:bg-zinc-900/50 rounded-md">
-                                        <span className="truncate">{prov.label}</span>
+                                      {/* 厂商分组标题栏（同 label 多配置已归并；baseUrl 不一致时附加标注区分） */}
+                                      <div className="flex items-center justify-between gap-1 px-2 py-1 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50/80 dark:bg-zinc-900/50 rounded-md">
+                                        <span className="truncate min-w-0">
+                                          {group.label}
+                                          {group.baseUrlNote && (
+                                            <span
+                                              className="ml-1 text-[9.5px] font-normal text-zinc-400 dark:text-zinc-500"
+                                              title={group.baseUrlNote}
+                                            >
+                                              ({group.baseUrlNote})
+                                            </span>
+                                          )}
+                                        </span>
                                         <span
                                           className={cn(
                                             "text-[10px] px-1.5 py-0.2 rounded font-normal shrink-0",
                                             isCurrentProvider
                                               ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium"
-                                              : prov.hasApiKey
+                                              : group.ready
                                                 ? "bg-zinc-200/70 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
                                                 : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                                           )}
                                         >
-                                          {isCurrentProvider ? "当前厂商" : prov.hasApiKey ? "已就绪" : "未填 Key"}
+                                          {isCurrentProvider ? "当前厂商" : group.ready ? "已就绪" : "未填 Key"}
                                         </span>
                                       </div>
 
                                       {/* 模型单列列表 */}
                                       <div className="space-y-0.5 pl-1">
-                                        {prov.models.map((m) => {
+                                        {group.models.map((m) => {
+                                          const modelProv = resolveGroupModelProvider(
+                                            group,
+                                            m,
+                                            activeProviderId
+                                          );
                                           const isSelected = isCurrentProvider && currentModel === m;
                                           const isHovered =
-                                            hoveredModel?.provId === prov.id && hoveredModel?.model === m;
+                                            hoveredModel?.provId === modelProv.id && hoveredModel?.model === m;
 
                                           return (
                                             <div
-                                              key={`${prov.id}:${m}`}
-                                              data-testid={`model-option-${prov.id}-${m}`}
+                                              key={`${modelProv.id}:${m}`}
+                                              data-testid={`model-option-${modelProv.id}-${m}`}
                                               role="button"
                                               tabIndex={0}
-                                              onMouseEnter={(e) => handleModelMouseEnter(prov.id, m, e)}
+                                              onMouseEnter={(e) => handleModelMouseEnter(modelProv.id, m, e)}
                                               onMouseLeave={handleModelMouseLeave}
                                               onClick={() => {
                                                 if (onSelectProviderModel) {
-                                                  onSelectProviderModel(prov.id, m);
+                                                  onSelectProviderModel(modelProv.id, m);
                                                 } else {
                                                   onSelectModel?.(m);
                                                 }
@@ -1134,7 +1210,7 @@ function ChatInputContent({
                                                 if (e.key === "Enter" || e.key === " ") {
                                                   e.preventDefault();
                                                   if (onSelectProviderModel) {
-                                                    onSelectProviderModel(prov.id, m);
+                                                    onSelectProviderModel(modelProv.id, m);
                                                   } else {
                                                     onSelectModel?.(m);
                                                   }

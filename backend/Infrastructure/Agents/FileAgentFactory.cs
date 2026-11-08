@@ -40,7 +40,8 @@ public static class FileAgentFactory
         string permissionMode = "ask",
         string? workspaceRoot = null,
         bool planEnabled = false,
-        IReadOnlyList<AITool>? computerUseTools = null)
+        IReadOnlyList<AITool>? computerUseTools = null,
+        string? modelName = null)
     {
         var isFullPermission = string.Equals(permissionMode, "full", StringComparison.OrdinalIgnoreCase);
         var isAutoPermission = string.Equals(permissionMode, "auto", StringComparison.OrdinalIgnoreCase);
@@ -189,6 +190,16 @@ public static class FileAgentFactory
             ? "\n                                      - computer-use（计算机操作助手）：当用户需要操作这台电脑上的桌面应用或窗口（如打开记事本写话、点击或切换窗口、读取桌面应用界面等）时派给它，它拥有 desktop_* 专用工具真实控制桌面；操作完成后汇总结果；"
             : "\n                                      - 【电脑操作未启用——最高优先级禁令】当前用户在「设置 -> 电脑」中未启用 Computer Use（电脑桌面操作能力），本会话没有挂载 computer-use 子智能体，也没有任何 desktop_* 工具。即使本会话历史消息中出现过 computer-use 或 desktop_* 的调用记录（那只是此前开启时的历史轮次，不代表当前状态），当前该能力已被关闭，严禁再次调用任何 desktop_* 工具，严禁以 computer-use 名义发起任何委派。若用户请求操作电脑桌面（如打开记事本写文字、点击窗口、操作桌面应用等），必须直接如实告知用户：该功能需在左上角「设置 → 电脑」页开启 Computer Use 后重试。同时严禁用写文件、执行 shell、模拟输入等任何其他方式冒充或变通完成桌面操作——一切变通执行都视为违规，直接拒绝即可。";
 
+        // 运行时身份澄清：工作区 AGENTS.md 人格与 agent-file-memory 长期记忆会注入
+        // system prompt，历史会话也可能残留过往模型的自述，导致切换模型后被历史
+        // 记忆带偏自述错误身份。明确告知：回答身份相关问题以运行时指定为准，
+        // 不得依据历史记忆或过往对话自述（对齐姊妹项目 HarnessAgentManager 同款澄清）。
+        var identityClarification = string.IsNullOrWhiteSpace(modelName)
+            ? string.Empty
+            : " 【运行时身份澄清】当前会话使用的模型由系统在运行时指定，本次运行实际指定的模型型号为 "
+              + modelName + "。当用户询问你的身份、模型型号或所属厂商时，必须以该运行时指定为准作答；"
+              + "严禁根据历史记忆、过往对话或训练数据中的自述来回答身份问题。";
+
         var loopEvaluators = new List<LoopEvaluator>
         {
             new TodoCompletionLoopEvaluator(new TodoCompletionLoopEvaluatorOptions()),
@@ -287,7 +298,8 @@ public static class FileAgentFactory
                                    .Replace("{{SHELL_PERMISSION_RULE}}", shellPermissionRule)
                                    .Replace("{{PLAN_MODE_RULE}}", planModeRule)
                                    .Replace("{{COMPUTER_USE_SUBLIST}}", computerUseSublist)
-                                   .Replace("{{COMPUTER_USE_RULE}}", computerUseRule),
+                                   .Replace("{{COMPUTER_USE_RULE}}", computerUseRule)
+                                  + identityClarification,
 
             // 文件能力：内置 FileAccessProvider，store 是多盘动态路由。
             // 读写全内置，审批开关来自 FileAccess 配置节（appsettings 可配、
