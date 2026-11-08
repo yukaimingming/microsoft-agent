@@ -4,7 +4,7 @@
  * 严格对齐 AI SDK Elements 官网规范 (https://elements.ai-sdk.dev/components/prompt-input)：
  * 1. 采用官方 PromptInput / PromptInputBody / PromptInputFooter / PromptInputTools / PromptInputSubmit 架构。
  * 2. 初始绝无白色边框：采用深邃无高亮白边的暗色系边框（border-zinc-800/80 bg-zinc-950/70）。
- * 3. 发送按钮采用官网示例：PromptInputSubmit（流式生成时自动变为停止方块，就绪时为 CornerDownLeft 回车发送图标）。
+ * 3. 发送按钮采用官网示例：PromptInputSubmit（流式生成时自动变为停止方块，就绪时为 ArrowUp 向上箭头发送图标）。
  * 4. 思考等级与推理强度升级为标准下拉选择（Dropdown / Select）样式，严格遵守模型能力约束（如 step-3.5-flash-2603 仅限 low / high）。
  */
 

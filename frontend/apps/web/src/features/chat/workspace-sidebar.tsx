@@ -273,7 +273,7 @@ export function WorkspaceSidebar({
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isSessionRunning ? (
             <span title="正在执行中" className="inline-flex shrink-0">
-              <Spinner className="size-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+              <Spinner className="size-3.5 text-black dark:text-white shrink-0" />
             </span>
           ) : (
             <MessageSquareIcon

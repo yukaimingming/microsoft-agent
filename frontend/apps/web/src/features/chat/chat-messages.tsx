@@ -42,7 +42,7 @@ import {
   RotateCcwIcon,
   ArrowRightIcon,
   PencilIcon,
-  CornerDownLeftIcon,
+  ArrowUpIcon,
 } from "lucide-react";
 import {
   Tooltip,
@@ -50,6 +50,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../../components/ui/tooltip.js";
+import { InputGroupButton } from "../../components/ui/input-group.js";
 import { cn } from "../../lib/utils.js";
 import type { Activity, ChatMessage } from "./chat-types.js";
 import type { RunSnapshot } from "@deepagent/shared";
@@ -765,16 +766,18 @@ export function ChatMessages({
                           >
                             取消
                           </button>
-                          {/* 重新发送按钮：与底部提示词输入框样式及图标完全一致 */}
-                          <button
+                          {/* 重新发送按钮：复用底部发送按钮同一渲染路径（InputGroupButton + chat-submit-btn），形状配色图标深浅色完全一致（图标同底部为 ArrowUp） */}
+                          <InputGroupButton
                             type="button"
+                            variant="default"
+                            size="icon-sm"
                             onClick={() => handleSaveEdit(message.id)}
                             disabled={!editingContent.trim()}
-                            className="size-8 rounded-lg bg-zinc-100 text-black hover:bg-white disabled:opacity-30 disabled:bg-zinc-800 disabled:text-zinc-500 transition-colors shadow-none flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+                            className="chat-submit-btn size-8 rounded-full transition-colors shadow-none"
                             title="重新发送 (Enter)"
                           >
-                            <CornerDownLeftIcon className="size-4" />
-                          </button>
+                            <ArrowUpIcon className="size-4" />
+                          </InputGroupButton>
                         </div>
                       </div>
                     ) : (
