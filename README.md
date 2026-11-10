@@ -1,6 +1,6 @@
 # MAF Harness 智能体全功能工作台
 
-基于 **[Microsoft Agent Framework (MAF)](https://learn.microsoft.com/agent-framework/)** 1.22 核心框架与 **.NET 10 WebAPI** 封装，通过 **AG-UI 协议** 全栈对接现代 React 19 + AI SDK Elements 前端 UI 的智能体工作台应用。
+基于 **[Microsoft Agent Framework (MAF)](https://learn.microsoft.com/agent-framework/)** 1.28 核心框架与 **.NET 10 WebAPI** 封装，通过 **AG-UI 协议** 全栈对接现代 React 19 + AI SDK Elements 前端 UI 的智能体工作台应用。
 
 后端框架内置的全部功能（多盘文件读写、任务清单分解、规划/执行模式切换、跨会话文件记忆与自动沉淀、反思裁判自检、文档分析子智能体、目录整理子智能体、智能终端 Shell、人工安全审批 HITL、行级 Diff 对比、思考流折叠展开）已全功能对接到 Web 前端，并在主面板中以建议提示词（Prompt Starters）卡片形式直观呈现。
 
@@ -58,7 +58,7 @@ flowchart TD
         AguiAdapter --> MafMgr
     end
 
-    subgraph 引擎 ["Microsoft Agent Framework (MAF) 1.22 核心引擎"]
+    subgraph 引擎 ["Microsoft Agent Framework (MAF) 1.28 核心引擎"]
         HarnessAgent["HarnessAgent 全家桶运行时"]
         FileAccessStore["MultiDriveFileStore (多盘动态路由)"]
         MemoryStore["FileSystemAgentFileStore (跨会话稳定记忆)"]
