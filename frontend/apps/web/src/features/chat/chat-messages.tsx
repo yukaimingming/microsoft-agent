@@ -15,7 +15,7 @@
  * 6. 人工安全审批与纯净 Markdown 渲染。
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StickToBottomContext } from "use-stick-to-bottom";
 import {
   Conversation,
@@ -54,6 +54,21 @@ import { InputGroupButton } from "../../components/ui/input-group.js";
 import { cn } from "../../lib/utils.js";
 import type { Activity, ChatMessage } from "./chat-types.js";
 import type { RunSnapshot } from "@deepagent/shared";
+import {
+  FINAL_SUMMARY_STRUCTURE_RE,
+  INTERMEDIATE_ACTION_HINT_RE,
+  PROCESS_PREAMBLE_LEAD_RE,
+  STREAMING_PROCESS_HINT_RE,
+  canDemoteAssistantToProcess,
+  hasStructuredExternalMarkdown,
+  isProcessOpeningText,
+  plainProcessHintText,
+  plansConcreteTool,
+} from "./client-reducer.js";
+
+/** 流式输出尚未达到足够长度前的缓冲门槛，避免短前缀先闪现到外部正文区再跳回时间线。 */
+const PENDING_TEXT_THRESHOLD = 48;
+const PENDING_TEXT_THRESHOLD_AFTER_TOOLS = 100;
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
@@ -74,16 +89,28 @@ export interface TurnAnswerState {
 }
 
 export interface TurnProcessTimeline {
-  /** 键是本轮第一条助手消息。时间线不跟着后面的新消息搬家。 */
+  /** 键是所属分段的第一条助手消息（常见单段场景即本轮第一条助手消息）。 */
   byFinalMessage: Map<string, ProcessTimelineItem[]>;
+  /** 外部实质回答之后直接跟了工具、尚无后续助手消息可挂载时，暂挂在该回答下方。 */
+  trailingByMessage: Map<string, ProcessTimelineItem[]>;
   ownedMessageIds: Set<string>;
-  /** 本轮第一条助手消息，即使还没有任何过程项。 */
+  /** 允许承载「正在分析」空占位的分段宿主消息 ID。 */
   turnHostIds: Set<string>;
-  /** 最终正文的流式/完成状态，挂在时间线宿主上，避免总结出现后总线还停在「正在分析」。 */
+  /** 当前仍处于活跃或收尾中的分段宿主集合（避免多段轮次里已完成的旧段被误置为正在分析）。 */
+  activeHostIds: Set<string>;
+  /** 尚未达到稳定门限、暂不在正文区渲染的流式短文本 ID。 */
+  pendingMessageIds: Set<string>;
+  /** 各分段最终正文的流式/完成状态，挂在对应分段宿主上。 */
   answerByHost: Map<string, TurnAnswerState>;
-  /** 整轮耗时挂在时间线宿主上，供多段消息场景复用。 */
+  /** 分段耗时（单段复用整轮耗时；多段按本段实际时间跨度计算）。 */
   durationByHost: Map<string, number>;
-  /** 本轮文件变更 Diff 摘要，严格归属于产生修改的助手消息，绝不泄露到后续对话轮次中。 */
+  /** 多段模式下各分段独立起始时间（供活跃新段从自身起点计时）。 */
+  segmentStartedAtByHost: Map<string, number>;
+  /** 各分段是否已收尾完成。 */
+  segmentCompletedByHost: Map<string, boolean>;
+  /** 标记属于多段拆分轮次的分段宿主（避免错误沿用整轮总耗时覆盖本段耗时）。 */
+  multiSegmentHostIds: Set<string>;
+  /** 本轮/本段文件变更 Diff 摘要，严格归属于产生修改的助手消息，绝不泄露到后续对话轮次中。 */
   diffByMessageId: Map<string, FileChangeSummary[]>;
 }
 
@@ -147,7 +174,11 @@ function projectTimeline(
   for (const [hostId, items] of built.byFinalMessage) {
     byFinalMessage.set(hostId, appendTimelineOrder(order, items));
   }
-  return { ...built, byFinalMessage, messages, activities, order };
+  const trailingByMessage = new Map<string, ProcessTimelineItem[]>();
+  for (const [hostId, items] of built.trailingByMessage) {
+    trailingByMessage.set(hostId, appendTimelineOrder(order, items));
+  }
+  return { ...built, byFinalMessage, trailingByMessage, messages, activities, order };
 }
 
 /**
@@ -192,21 +223,39 @@ export function parseFileChangesFromActivities(activities: Activity[]): FileChan
 }
 
 /**
- * 按时间把一轮里的思考、中间说明和工具排进同一条时间线。
- * 时间线挂在本轮第一条助手消息上。
- * 最后一条非过程性质且有正文的消息留在时间线外面，用 Markdown 显示。
- * 中间说明直接进入时间线按序流式展示，不会先跳到外部 Markdown 再跳回时间线。
+ * 按时间把一轮里的思考、中间说明和工具按「实质外部回答」分段排进时间线（方案 A）。
+ * - 常规轮次（前置过程 + 最终答复）保持为单一分段，时间线固定在本轮第一条助手消息上；
+ * - 若同一轮先产出了一份实质外部回答、后续又触发工具调用或新一轮步骤，则以该实质回答为界自然分段：
+ *   原实质回答稳定留在正文 Markdown 区，后续工具与新步骤作为下一条时间线接在其下方；
+ * - 流式过程中尚未越过稳定门限的短前缀暂入 pendingMessageIds，防止正文区与时间线之间来回跳动。
  */
 export function buildTurnProcessTimeline(
   messages: ChatMessage[],
   activities: Activity[],
 ): TurnProcessTimeline {
   const byFinalMessage = new Map<string, ProcessTimelineItem[]>();
+  const trailingByMessage = new Map<string, ProcessTimelineItem[]>();
   const ownedMessageIds = new Set<string>();
   const turnHostIds = new Set<string>();
+  const activeHostIds = new Set<string>();
+  const pendingMessageIds = new Set<string>();
   const answerByHost = new Map<string, TurnAnswerState>();
   const durationByHost = new Map<string, number>();
+  const segmentStartedAtByHost = new Map<string, number>();
+  const segmentCompletedByHost = new Map<string, boolean>();
+  const multiSegmentHostIds = new Set<string>();
   const diffByMessageId = new Map<string, FileChangeSummary[]>();
+
+  interface TurnSegment {
+    startIdx: number;
+    endIdx: number;
+    host: ChatMessage;
+    answerMessage: ChatMessage | null;
+    activities: Activity[];
+    trailingActivities: Activity[];
+    fileActivities: Activity[];
+  }
+
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
     if (!message || message.role !== "assistant") continue;
@@ -217,12 +266,8 @@ export function buildTurnProcessTimeline(
     const turnMessages = messages.slice(start, end).filter((item) => item.role === "assistant");
     const host = turnMessages[0];
     if (!host || host.id !== message.id) continue;
-    turnHostIds.add(host.id);
 
     const turnDuration = [...turnMessages].reverse().find((item) => item.runDurationMs !== undefined)?.runDurationMs;
-    if (turnDuration !== undefined) {
-      durationByHost.set(host.id, turnDuration);
-    }
 
     const runIds = new Set(turnMessages.map((item) => item.runId).filter((id): id is string => Boolean(id)));
     const userMsg = start > 0 ? messages[start - 1] : null;
@@ -255,48 +300,58 @@ export function buildTurnProcessTimeline(
       return true;
     });
 
-    const plansConcreteTool = (text: string | undefined): boolean =>
-      Boolean(
-        text &&
-          /file_access_[a-z0-9_]+|file_access|run_shell|todos_[a-z0-9_]+|file_memory_[a-z0-9_]+|mode_(get|set)|read_pdf|read_excel|web_search_exa|web_fetch_exa|web_search|background_agents_[a-z0-9_]+/i.test(
-            text,
-          ),
-      );
-    const preambleLead =
-      /^(?:步骤\s*\d+|当前\s*(?:shell|工作区|终端|目录)|我来|我将|让我|正在|先|首先|接下来|准备|调用|使用|执行|通过|我用|我会|我看到|我先|现在我|为了|下面我|继续)/;
-    const intermediateActionHint =
-      /^(?:[^\r\n]{0,40})(?:按规则|先读|再读|先看|再看|先检查|再检查|现在用|再用|先用|改用|换用|继续用|接下来|下一步|准备调用|准备使用|先调用|再调用|已存在.*(?:读|看|检查|修改)|已有内容.*(?:修改|替换|写入))/;
-    const isFinalSummaryStructure =
-      /^(?:#{1,6}\s+(?!步骤)|\*\*(?!步骤)|✅|🎉|📋|检查完成|操作完成|任务完成|任务已完成|总结|汇总|已完成|已存入|当前模式)|[\r\n]+\s*(?:#{1,6}\s|\*\*|-\s|\d+\.\s|\|)/;
-
     const isItemProcessMessage = (item: ChatMessage, msgIdx: number): boolean => {
-      // 1. 已被标记为过程消息（后端 CUSTOM_PROCESS_MESSAGE / isProcess: true），100% 属于时间线过程
+      const trimmed = item.content.trim();
+
+      // 0. 治本防降级与历史纠偏（方案 1）：
+      //    结构化外部正文（或未预标过程且已跨过缓冲形成非过程实质正文）禁止落入过程摘要——
+      //    即使后续又产生工具调用、新消息，或历史持久化数据曾误带 `isProcess: true`。
+      if (trimmed && !canDemoteAssistantToProcess(item)) {
+        return false;
+      }
+
+      // 1. 已被标记为过程消息（后端 CUSTOM_PROCESS_MESSAGE / isProcess: true），属于时间线过程
       if (item.isProcess === true) return true;
 
-      // 2. 本轮后续已有其他 assistant 消息且有正文内容：前面这条必定是过程说明
+      // 2. 后续已有其他 assistant 消息且有正文内容：前面非实质正文的短消息属于前序过程说明
       const hasLaterAssistantContent = turnMessages
         .slice(msgIdx + 1)
         .some((later) => Boolean(later.content.trim()));
       if (hasLaterAssistantContent) return true;
 
-      // 3. 在当前消息内容开始时或之后，存在工具调用或子智能体活动：这是工具前过程说明
       const contentStart = item.contentStartedAt ?? item.createdAt ?? 0;
+      const hintText = plainProcessHintText(trimmed);
+
+      // 3. 流式过程中带「操作引导」语气的非结构化说明（即使写成单行 ### 标题）先留在时间线内，
+      //    等后续工具调用确认，避免先闪现到外部总结区再跳回时间线。
       if (
-        Boolean(item.content.trim()) &&
+        item.streaming &&
+        Boolean(hintText) &&
+        !hasStructuredExternalMarkdown(trimmed) &&
+        turnActivities.length > 0 &&
+        (STREAMING_PROCESS_HINT_RE.test(hintText) ||
+          PROCESS_PREAMBLE_LEAD_RE.test(hintText) ||
+          INTERMEDIATE_ACTION_HINT_RE.test(hintText))
+      ) {
+        return true;
+      }
+
+      // 4. 在当前短/非实质消息内容开始时或之后，存在工具调用或子智能体活动：这是工具前过程说明
+      if (
+        Boolean(trimmed) &&
         turnActivities.some((activity) => activity.startedAt >= contentStart)
       ) {
         return true;
       }
 
-      // 4. 伴随思考且并非本轮最后一条消息
+      // 5. 伴随思考的非实质节点且并非本轮最后一条消息
       if (Boolean(item.reasoning) && msgIdx < turnMessages.length - 1) {
         return true;
       }
 
-      // 5. 流式期间尚未收到 PROCESS_MESSAGE 标记的纯单段工具前过渡句兜底（排除任何带 Markdown 标题/列表/表格的最终总结）
-      if (item.streaming && Boolean(item.content.trim())) {
-        const trimmed = item.content.trim();
-        if (!isFinalSummaryStructure.test(trimmed)) {
+      // 6. 流式期间尚未收到 PROCESS_MESSAGE 标记的纯单段工具前过渡句兜底（排除任何带明确总结结构的终稿）
+      if (item.streaming && Boolean(trimmed)) {
+        if (!FINAL_SUMMARY_STRUCTURE_RE.test(trimmed)) {
           const hasToolBeforeContent = allTurnActivities.some(
             (activity) => activity.startedAt > 0 && activity.startedAt <= contentStart,
           );
@@ -305,7 +360,7 @@ export function buildTurnProcessTimeline(
           }
           if (
             allTurnActivities.length > 0 &&
-            (preambleLead.test(trimmed) || intermediateActionHint.test(trimmed))
+            (PROCESS_PREAMBLE_LEAD_RE.test(hintText) || INTERMEDIATE_ACTION_HINT_RE.test(hintText))
           ) {
             return true;
           }
@@ -315,71 +370,127 @@ export function buildTurnProcessTimeline(
       return false;
     };
 
-    let finalMessage: ChatMessage | null = null;
-    for (let msgIdx = turnMessages.length - 1; msgIdx >= 0; msgIdx -= 1) {
-      const candidate = turnMessages[msgIdx]!;
-      if (candidate.content.trim() && !isItemProcessMessage(candidate, msgIdx)) {
-        finalMessage = candidate;
-        break;
+    const processFlags = turnMessages.map((item, msgIdx) => isItemProcessMessage(item, msgIdx));
+    const isExternalAnswer = (msgIdx: number): boolean =>
+      Boolean(turnMessages[msgIdx]?.content.trim()) && !processFlags[msgIdx];
+
+    // 尚未判定归属的流式短前缀（或尚带过程引导语且未达 140 字门限的流式文本）先在 pendingMessageIds 暂缓外显，
+    // 防止在正文区与时间线之间先闪现再缩回的跳动。
+    for (let msgIdx = 0; msgIdx < turnMessages.length; msgIdx += 1) {
+      const item = turnMessages[msgIdx]!;
+      const trimmed = item.content.trim();
+      if (!item.streaming || !trimmed || processFlags[msgIdx]) continue;
+      if (hasStructuredExternalMarkdown(trimmed) || FINAL_SUMMARY_STRUCTURE_RE.test(trimmed)) {
+        continue;
+      }
+      if (isProcessOpeningText(trimmed) && trimmed.length < 140) {
+        pendingMessageIds.add(item.id);
+        continue;
+      }
+      const threshold = turnActivities.length > 0 ? PENDING_TEXT_THRESHOLD_AFTER_TOOLS : PENDING_TEXT_THRESHOLD;
+      if (trimmed.length < threshold) {
+        pendingMessageIds.add(item.id);
       }
     }
 
-    if (finalMessage && finalMessage.content.trim()) {
-      answerByHost.set(host.id, {
-        streaming: finalMessage.streaming,
-        complete: !finalMessage.streaming,
+    // 方案 A：按「非过程外部回答」将本轮自然切分为有序分段
+    const segments: TurnSegment[] = [];
+    let lastExternalIdx = -1;
+    for (let msgIdx = 0; msgIdx < turnMessages.length; msgIdx += 1) {
+      if (isExternalAnswer(msgIdx)) lastExternalIdx = msgIdx;
+    }
+
+    let segStart = 0;
+    for (let msgIdx = 0; msgIdx < turnMessages.length; msgIdx += 1) {
+      if (!isExternalAnswer(msgIdx)) continue;
+      const answerMsg = turnMessages[msgIdx]!;
+      let segEnd = msgIdx;
+      if (msgIdx === lastExternalIdx && msgIdx < turnMessages.length - 1) {
+        // 兼容外部回答结束后紧邻一个空内容补充推理节点的场景（不额外拆出第二条无正文时间线）
+        const hasTailContent = turnMessages.slice(msgIdx + 1).some((m) => Boolean(m.content.trim()));
+        const postBoundaryTime = answerMsg.contentStartedAt ?? answerMsg.createdAt ?? 0;
+        const hasTailActivity =
+          postBoundaryTime > 0 &&
+          turnActivities.some((activity) => activity.startedAt >= postBoundaryTime);
+        if (!hasTailContent && !hasTailActivity) {
+          segEnd = turnMessages.length - 1;
+        }
+      }
+      segments.push({
+        startIdx: segStart,
+        endIdx: segEnd,
+        host: turnMessages[segStart]!,
+        answerMessage: answerMsg,
+        activities: [],
+        trailingActivities: [],
+        fileActivities: [],
+      });
+      segStart = segEnd + 1;
+      msgIdx = segEnd;
+    }
+    if (segStart < turnMessages.length) {
+      segments.push({
+        startIdx: segStart,
+        endIdx: turnMessages.length - 1,
+        host: turnMessages[segStart]!,
+        answerMessage: null,
+        activities: [],
+        trailingActivities: [],
+        fileActivities: [],
       });
     }
 
-    const hasTimelineItems =
-      turnActivities.length > 0 ||
-      turnMessages.some((item, msgIdx) => Boolean(item.reasoning) || isItemProcessMessage(item, msgIdx));
-
-    if (hasTimelineItems) {
-      const items: ProcessTimelineItem[] = [];
-      for (let msgIdx = 0; msgIdx < turnMessages.length; msgIdx += 1) {
-        const item = turnMessages[msgIdx]!;
-        const createdAt = item.createdAt ?? 0;
-        const isProcess = isItemProcessMessage(item, msgIdx);
-        if (item.reasoning) {
-          items.push({
-            id: `reasoning:${item.id}`,
-            kind: "assistant",
-            label: item.reasoningStreaming ? "正在思考" : "思考",
-            content: item.reasoning,
-            startedAt: item.reasoningStartedAt ?? createdAt,
-            streaming: item.reasoningStreaming,
-            reasoningDuration: item.reasoningDuration,
-            section: "reasoning",
-          });
-          if (!item.content.trim() || isProcess || item.id !== finalMessage?.id) {
-            ownedMessageIds.add(item.id);
-          }
-        }
-        if (isProcess && (item.content.trim() || (item.streaming && !item.reasoningStreaming))) {
-          if (item.content.trim()) {
-            items.push({
-              id: `message:${item.id}`,
-              kind: "assistant",
-              label: item.streaming ? "正在整理过程" : "过程摘要",
-              content: item.content,
-              startedAt: item.contentStartedAt ?? createdAt,
-              streaming: item.streaming,
-            });
-          }
-          ownedMessageIds.add(item.id);
-        }
-        // 防御锁：非最终答复或无实质正文的消息（如中间过程节点、空占位），一律由时间线接管，禁止外漏
-        if (!item.content.trim() || isProcess || item.id !== finalMessage?.id) {
-          ownedMessageIds.add(item.id);
-        }
+    const segmentStartAnchor = (seg: TurnSegment): number | undefined => {
+      for (let idx2 = seg.startIdx; idx2 <= seg.endIdx; idx2 += 1) {
+        const msg = turnMessages[idx2]!;
+        const anchor = msg.reasoningStartedAt ?? msg.contentStartedAt ?? msg.createdAt;
+        if (typeof anchor === "number" && anchor > 0) return anchor;
       }
-      for (const activity of turnActivities) items.push({ id: activity.id, kind: "activity", activity });
-      items.sort(compareTimelineItems);
-      byFinalMessage.set(host.id, items);
+      return undefined;
+    };
+
+    const pickSegmentForActivity = (activity: Activity): { segIdx: number; trailing: boolean } => {
+      for (let segIdx = 0; segIdx < segments.length; segIdx += 1) {
+        const seg = segments[segIdx]!;
+        const answer = seg.answerMessage;
+        if (!answer) {
+          return { segIdx, trailing: false };
+        }
+        const nextSeg = segments[segIdx + 1];
+        if (nextSeg) {
+          const splitAt =
+            answer.contentStartedAt !== undefined
+              ? answer.contentStartedAt
+              : (segmentStartAnchor(nextSeg) ?? answer.createdAt ?? 0);
+          if (splitAt <= 0 || activity.startedAt < splitAt) {
+            return { segIdx, trailing: false };
+          }
+          continue;
+        }
+        // 最后一个已有实质回答的分段：仅当其拥有明确的 contentStartedAt，
+        // 且工具明显发起于该回答输出之后时，挂在回答下方避免时序倒挂。
+        if (
+          answer.contentStartedAt !== undefined &&
+          answer.contentStartedAt > 0 &&
+          activity.startedAt >= answer.contentStartedAt &&
+          !canDemoteAssistantToProcess(answer)
+        ) {
+          return { segIdx, trailing: true };
+        }
+        return { segIdx, trailing: false };
+      }
+      return { segIdx: Math.max(0, segments.length - 1), trailing: false };
+    };
+
+    for (const activity of turnActivities) {
+      const { segIdx, trailing } = pickSegmentForActivity(activity);
+      const targetSeg = segments[segIdx];
+      if (!targetSeg) continue;
+      if (trailing) targetSeg.trailingActivities.push(activity);
+      else targetSeg.activities.push(activity);
     }
 
-    // 轮次文件 Diff 隔离：严格只提取属于本轮的文件修改活动，绝不跨轮污染
+    // 轮次文件 Diff 隔离：提取属于本轮的文件修改活动，按分段挂到对应的实质回答或宿主上
     const turnFileActivities = activities.filter((activity) => {
       if (activity.kind !== "file") return false;
       if (activity.runId && runIds.size > 0) {
@@ -390,15 +501,180 @@ export function buildTurnProcessTimeline(
       }
       return true;
     });
+    for (const fileActivity of turnFileActivities) {
+      const { segIdx } = pickSegmentForActivity(fileActivity);
+      segments[segIdx]?.fileActivities.push(fileActivity);
+    }
 
-    const turnFileChanges = parseFileChangesFromActivities(turnFileActivities);
-    if (turnFileChanges.length > 0) {
-      // 若本轮存在独立最终正文且未被时间线接管，优先挂在最终回答消息上；否则挂在本轮宿主消息上
-      const targetDiffMsgId = finalMessage && !ownedMessageIds.has(finalMessage.id) ? finalMessage.id : host.id;
-      diffByMessageId.set(targetDiffMsgId, turnFileChanges);
+    const isMultiSegmentTurn =
+      segments.length > 1 || segments.some((seg) => seg.trailingActivities.length > 0);
+    const activeSegmentIndex = segments.length - 1;
+
+    for (let segIdx = 0; segIdx < segments.length; segIdx += 1) {
+      const seg = segments[segIdx]!;
+      const segHost = seg.host;
+      const isLastSegment = segIdx === activeSegmentIndex;
+      const hasTrailingAfterLastAnswer = isLastSegment && seg.trailingActivities.length > 0;
+
+      if (isLastSegment && !hasTrailingAfterLastAnswer) {
+        turnHostIds.add(segHost.id);
+      }
+      if (isLastSegment && (!seg.answerMessage || seg.answerMessage.streaming)) {
+        activeHostIds.add(segHost.id);
+      }
+      if (isMultiSegmentTurn) {
+        multiSegmentHostIds.add(segHost.id);
+      }
+
+      if (seg.answerMessage && seg.answerMessage.content.trim()) {
+        answerByHost.set(segHost.id, {
+          streaming: seg.answerMessage.streaming,
+          complete: !seg.answerMessage.streaming,
+        });
+      }
+
+      const segItems: ProcessTimelineItem[] = [];
+      let segHasTimelineTrigger = seg.activities.length > 0;
+      for (let msgIdx = seg.startIdx; msgIdx <= seg.endIdx; msgIdx += 1) {
+        const item = turnMessages[msgIdx]!;
+        const createdAt = item.createdAt ?? 0;
+        const isProcess = processFlags[msgIdx] ?? false;
+        if (item.reasoning) {
+          segHasTimelineTrigger = true;
+          segItems.push({
+            id: `reasoning:${item.id}`,
+            kind: "assistant",
+            label: item.reasoningStreaming ? "正在思考" : "思考",
+            content: item.reasoning,
+            startedAt: item.reasoningStartedAt ?? createdAt,
+            streaming: item.reasoningStreaming,
+            reasoningDuration: item.reasoningDuration,
+            section: "reasoning",
+          });
+        }
+        if (isProcess) {
+          segHasTimelineTrigger = true;
+          if (item.content.trim()) {
+            segItems.push({
+              id: `message:${item.id}`,
+              kind: "assistant",
+              label: item.streaming ? "正在整理过程" : "过程摘要",
+              content: item.content,
+              startedAt: item.contentStartedAt ?? createdAt,
+              streaming: item.streaming,
+            });
+          }
+        }
+        // 防御锁：非外部实质正文（空占位、过程说明）交由时间线接管；
+        // 外部实质回答绝不放进 ownedMessageIds，保证稳定渲染在 Markdown 正文区。
+        if (!item.content.trim() || isProcess) {
+          ownedMessageIds.add(item.id);
+        }
+      }
+
+      if (segHasTimelineTrigger) {
+        for (const activity of seg.activities) {
+          segItems.push({ id: activity.id, kind: "activity", activity });
+        }
+        segItems.sort(compareTimelineItems);
+        byFinalMessage.set(segHost.id, segItems);
+      }
+
+      if (seg.trailingActivities.length > 0 && seg.answerMessage) {
+        const trailingItems = seg.trailingActivities
+          .map((activity): ProcessTimelineItem => ({ id: activity.id, kind: "activity", activity }))
+          .sort(compareTimelineItems);
+        trailingByMessage.set(seg.answerMessage.id, trailingItems);
+      }
+
+      // 统计本分段的有效时间戳跨度
+      const segValidStarts: number[] = [];
+      const segValidEnds: number[] = [];
+      for (const item of segItems) {
+        if (item.kind === "assistant") {
+          if (item.startedAt >= 1_000_000_000_000) {
+            segValidStarts.push(item.startedAt);
+            if (typeof item.reasoningDuration === "number" && item.reasoningDuration > 0) {
+              segValidEnds.push(item.startedAt + item.reasoningDuration * 1000);
+            }
+          }
+        } else {
+          if (item.activity.startedAt >= 1_000_000_000_000) {
+            segValidStarts.push(item.activity.startedAt);
+          }
+          if (item.activity.endedAt && item.activity.endedAt >= 1_000_000_000_000) {
+            segValidEnds.push(item.activity.endedAt);
+          }
+        }
+      }
+      if (
+        seg.answerMessage?.contentStartedAt &&
+        seg.answerMessage.contentStartedAt >= 1_000_000_000_000 &&
+        seg.activities.length > 0
+      ) {
+        segValidEnds.push(seg.answerMessage.contentStartedAt);
+      }
+      if (
+        isLastSegment &&
+        seg.answerMessage?.runEndedAt &&
+        seg.answerMessage.runEndedAt >= 1_000_000_000_000
+      ) {
+        segValidEnds.push(seg.answerMessage.runEndedAt);
+      }
+      if (segIdx > 0 && segValidStarts.length > 0) {
+        segmentStartedAtByHost.set(segHost.id, Math.min(...segValidStarts));
+      }
+
+      if (!isMultiSegmentTurn) {
+        if (turnDuration !== undefined) {
+          durationByHost.set(segHost.id, turnDuration);
+        }
+      } else {
+        const segHasStreamingItem = segItems.some((item) =>
+          item.kind === "assistant"
+            ? Boolean(item.streaming)
+            : item.activity.status === "running" ||
+              item.activity.status === "pending" ||
+              item.activity.status === "waiting_approval",
+        );
+        const segSettled =
+          Boolean(seg.answerMessage && !seg.answerMessage.streaming) ||
+          !isLastSegment ||
+          turnDuration !== undefined;
+        segmentCompletedByHost.set(segHost.id, segSettled && !segHasStreamingItem);
+        if (segSettled && !segHasStreamingItem && segValidStarts.length > 0 && segValidEnds.length > 0) {
+          const span = Math.max(...segValidEnds) - Math.min(...segValidStarts);
+          if (span >= -60_000 && span <= 3_600_000) {
+            durationByHost.set(segHost.id, Math.max(1000, span));
+          }
+        }
+      }
+
+      const segFileChanges = parseFileChangesFromActivities(seg.fileActivities);
+      if (segFileChanges.length > 0) {
+        const targetDiffMsgId =
+          seg.answerMessage && !ownedMessageIds.has(seg.answerMessage.id)
+            ? seg.answerMessage.id
+            : segHost.id;
+        diffByMessageId.set(targetDiffMsgId, segFileChanges);
+      }
     }
   }
-  return { byFinalMessage, ownedMessageIds, turnHostIds, answerByHost, durationByHost, diffByMessageId };
+
+  return {
+    byFinalMessage,
+    trailingByMessage,
+    ownedMessageIds,
+    turnHostIds,
+    activeHostIds,
+    pendingMessageIds,
+    answerByHost,
+    durationByHost,
+    segmentStartedAtByHost,
+    segmentCompletedByHost,
+    multiSegmentHostIds,
+    diffByMessageId,
+  };
 }
 
 export function findPromotedMessageId(
@@ -476,6 +752,72 @@ function cleanMarkdownForTurnPreview(text: string): string {
     .trim();
 }
 
+/**
+ * 流式 Markdown 渲染节流间隔（ms）：
+ * `Streamdown` 在 `mode="static"` 下每次文本变更都会重跑完整 Markdown 解析并在 `useEffect` 内调用 `setBlocks(parsedBlocks)`；
+ * 若按 `REVEAL_MS=18ms` 连续推送而单次渲染耗时超过 18ms，`setBlocks` 会在尚未独立提交前被下一拍覆写，
+ * 导致 React 19 `nestedPassiveUpdateCount` 连续累加至 > 50 触发 `Maximum update depth exceeded`。
+ * 提交后留出 >=140ms 静默窗口，可让 `Streamdown` 稳定完成空副作用周期并将计数清零；非流式态立即全量直通渲染。
+ */
+const STREAM_MARKDOWN_FLUSH_MS = 140;
+
+function StreamingMessageResponse({
+  content,
+  streaming,
+}: {
+  content: string;
+  streaming: boolean;
+}) {
+  const [displayedContent, setDisplayedContent] = useState(() => content);
+  const latestContentRef = useRef(content);
+  latestContentRef.current = content;
+  const lastCommittedAtRef = useRef<number>(
+    typeof performance !== "undefined" ? performance.now() : Date.now(),
+  );
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    lastCommittedAtRef.current =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+  }, [displayedContent]);
+
+  useEffect(() => {
+    if (!streaming || content.length < displayedContent.length) {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
+    if (content === displayedContent || timerRef.current !== null) return;
+
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const waitMs = Math.max(16, STREAM_MARKDOWN_FLUSH_MS - (now - lastCommittedAtRef.current));
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      setDisplayedContent(latestContentRef.current);
+    }, waitMs);
+  }, [content, displayedContent, streaming]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  const effectiveContent =
+    !streaming || content.length < displayedContent.length ? content : displayedContent;
+
+  return (
+    <MessageResponse mode="static" isAnimating={streaming}>
+      {effectiveContent}
+    </MessageResponse>
+  );
+}
+
 export function ChatMessages({
   messages,
   activities,
@@ -513,10 +855,16 @@ export function ChatMessages({
   }, [messages, activities]);
   const {
     byFinalMessage: turnTimelineByMessage,
+    trailingByMessage,
     ownedMessageIds: timelineOwnedMessageIds,
     turnHostIds,
+    activeHostIds,
+    pendingMessageIds,
     answerByHost,
     durationByHost,
+    segmentStartedAtByHost,
+    segmentCompletedByHost,
+    multiSegmentHostIds,
     diffByMessageId,
   } = timelineView;
 
@@ -849,61 +1197,133 @@ export function ChatMessages({
               // 助手 Agent 消息（无头像、左对齐纯净排版）
 
               const processItems = turnTimelineByMessage.get(message.id) ?? [];
+              const trailingProcessItems = trailingByMessage.get(message.id) ?? [];
               const messageIsInTimeline = timelineOwnedMessageIds.has(message.id);
-              if (messageIsInTimeline && processItems.length === 0) return null;
               const runIsLive = runSnapshot?.status === "connecting"
                 || runSnapshot?.status === "running"
                 || runSnapshot?.status === "waiting_approval";
               const hasLaterUserMessage = messages.slice(idx + 1).some((item) => item.role === "user");
               const isLatestTurn = !hasLaterUserMessage;
-              // 空的「正在分析」只出现在本轮第一条助手消息上。后面的消息不再另起一条总线。
+              // 空的「正在分析」只出现在本轮当前活跃分段宿主上，避免前面已完成回答或后续节点重复占位。
               const showLivePlaceholder = processItems.length === 0
+                && trailingProcessItems.length === 0
                 && turnHostIds.has(message.id)
                 && isLatestTurn
                 && runIsLive
                 && (!message.runId || message.runId === runSnapshot?.runId);
+              if (
+                messageIsInTimeline &&
+                processItems.length === 0 &&
+                trailingProcessItems.length === 0 &&
+                !showLivePlaceholder
+              ) {
+                return null;
+              }
               // 思考还在增量到达时先不画正文，避免两段抢同一条消息。
-              // 已被时间线收下的说明（含运行中、工具之后的中间返回）不在外面再画一份 Markdown。
+              // 已被时间线收下的说明（或尚未越过稳定门限的流式短前缀）不在外面画 Markdown。
               const isReasoningStreaming = message.reasoningStreaming === true;
               const hasSubstantialContent = Boolean(message.content && message.content.trim().length > 0);
+              const isPendingText = pendingMessageIds.has(message.id);
               // 外部正文展示防跳动规则：
               // 1. 绝对不能在时间线内（非过程消息）
               // 2. 思考不能正在流式输出
-              // 3. 必须已有实质内容，禁止在空内容或思考刚结束时抢跑弹出外漏
+              // 3. 尚未越过长度/结构稳定门限的流式短前缀暂缓外显，防止刚冒头又退回时间线
+              // 4. 必须已有实质内容，禁止在空内容或思考刚结束时抢跑弹出外漏
               const shouldShowMessageContent =
                 !messageIsInTimeline &&
                 !isReasoningStreaming &&
+                !isPendingText &&
                 hasSubstantialContent;
               const turnAnswer = answerByHost.get(message.id);
-              const hostDurationMs = durationByHost.get(message.id) ?? message.runDurationMs;
+              const isMultiSegmentHost = multiSegmentHostIds.has(message.id);
+              const isActiveSegmentHost = activeHostIds.has(message.id);
+              const hostDurationMs =
+                durationByHost.get(message.id) ??
+                (!isMultiSegmentHost ? message.runDurationMs : undefined);
+              const effectiveDurationMs =
+                hostDurationMs ??
+                (!isMultiSegmentHost && message.runId === runSnapshot?.runId ? runSnapshot?.durationMs : undefined);
+              const effectiveStartedAt =
+                segmentStartedAtByHost.get(message.id) ?? runSnapshot?.startedAt;
+              const hostRunCompleted = isMultiSegmentHost
+                ? (segmentCompletedByHost.get(message.id) ??
+                  (message.runId === runSnapshot?.runId ? runSnapshot?.status === "completed" : true))
+                : (message.runId === runSnapshot?.runId
+                    ? runSnapshot?.status === "completed"
+                    : hostDurationMs !== undefined);
               const turnFileChanges = diffByMessageId.get(message.id) ?? [];
               const hasDiffSection = turnFileChanges.length > 0;
 
               const hasProcessSection = Boolean(processItems.length > 0 || showLivePlaceholder);
+              const hasTrailingProcessSection = trailingProcessItems.length > 0;
               const hasApprovalSection = Boolean(isLast && approvals.length > 0);
               // 如果既没有过程时间线，也没有正文内容，也没有审批卡片，也没有文件 Diff 变更卡片，整块直接跳过，避免留出多余空容器
-              if (!hasProcessSection && !shouldShowMessageContent && !hasApprovalSection && !hasDiffSection) {
+              if (!hasProcessSection && !shouldShowMessageContent && !hasTrailingProcessSection && !hasApprovalSection && !hasDiffSection) {
                 return null;
               }
 
+              const trailingValidStarts = trailingProcessItems
+                .map((item) => (item.kind === "assistant" ? item.startedAt : item.activity.startedAt))
+                .filter((t): t is number => typeof t === "number" && t >= 1_000_000_000_000);
+              const trailingStartedAt =
+                trailingValidStarts.length > 0 ? Math.min(...trailingValidStarts) : undefined;
+              const trailingHasRunning = trailingProcessItems.some((item) =>
+                item.kind === "assistant"
+                  ? Boolean(item.streaming)
+                  : item.activity.status === "running" ||
+                    item.activity.status === "pending" ||
+                    item.activity.status === "waiting_approval",
+              );
+              const trailingValidEnds = trailingProcessItems
+                .map((item) => (item.kind === "assistant" ? undefined : item.activity.endedAt))
+                .filter((t): t is number => typeof t === "number" && t >= 1_000_000_000_000);
+              if (!trailingHasRunning && message.runEndedAt && message.runEndedAt >= 1_000_000_000_000) {
+                trailingValidEnds.push(message.runEndedAt);
+              }
+              const trailingSpan =
+                !trailingHasRunning &&
+                trailingStartedAt !== undefined &&
+                trailingValidEnds.length > 0
+                  ? Math.max(...trailingValidEnds) - trailingStartedAt
+                  : undefined;
+              const trailingDurationMs =
+                trailingSpan !== undefined && trailingSpan >= -60_000 && trailingSpan <= 3_600_000
+                  ? Math.max(1000, trailingSpan)
+                  : undefined;
+              const trailingIsActive = Boolean(
+                runIsLive &&
+                  isLatestTurn &&
+                  (!message.runId || !runSnapshot?.runId || message.runId === runSnapshot.runId),
+              );
+              const trailingRunCompleted =
+                message.runId === runSnapshot?.runId
+                  ? runSnapshot?.status === "completed"
+                  : !trailingIsActive;
+
               return (
                 <div key={message.id} data-message-id={message.id} className="flex flex-col w-full text-zinc-100 space-y-3">
-                  {/* 过程时间线固定在本轮第一条助手消息上，工具按出现顺序往下追加。 */}
+                  {/* 前置过程时间线：常规轮次固定在分段首条助手消息上方。 */}
                   {hasProcessSection && (
                   <ProcessActivityGroup
                     key={message.id}
                     items={processItems}
-                    isActive={showLivePlaceholder || (runIsLive && processItems.length > 0 && isLatestTurn)}
-                    startedAt={runSnapshot?.startedAt}
+                    isActive={
+                      showLivePlaceholder ||
+                      (runIsLive &&
+                        processItems.length > 0 &&
+                        isLatestTurn &&
+                        (!isMultiSegmentHost || isActiveSegmentHost))
+                    }
+                    startedAt={effectiveStartedAt}
                     finalAnswerComplete={turnAnswer?.complete ?? false}
                     finalAnswerStreaming={turnAnswer?.streaming ?? false}
-                    durationMs={hostDurationMs ?? (message.runId === runSnapshot?.runId ? runSnapshot?.durationMs : undefined)}
-                    runCompleted={message.runId === runSnapshot?.runId ? runSnapshot?.status === "completed" : hostDurationMs !== undefined}
+                    durationMs={effectiveDurationMs}
+                    runCompleted={hostRunCompleted}
                   />
                   )}
 
-                  {/* 4. 人工安全审批卡片 */}
-                  {hasApprovalSection &&
+                  {/* 4. 人工安全审批卡片（前置阶段） */}
+                  {hasApprovalSection && !hasTrailingProcessSection &&
                     approvals.map((activity) => (
                       <div key={activity.id} className="w-full my-1">
                         <ApprovalCard
@@ -924,9 +1344,11 @@ export function ChatMessages({
                           </span>
                         ) : hasSubstantialContent ? (
                           <div className={cn("w-full text-zinc-100", message.streaming && "streaming-caret")}>
-                            <MessageResponse mode="static" isAnimating={message.streaming}>
-                              {message.content}
-                            </MessageResponse>
+                            <StreamingMessageResponse
+                              key={message.id}
+                              content={message.content}
+                              streaming={Boolean(message.streaming)}
+                            />
                           </div>
                         ) : null}
                       </MessageContent>
@@ -961,6 +1383,32 @@ export function ChatMessages({
                       )}
                     </Message>
                   )}
+
+                  {/* 方案 A 后置时间线：若实质外部回答结束后直接跟了工具调用，时间线自然挂在其下方 */}
+                  {hasTrailingProcessSection && (
+                    <ProcessActivityGroup
+                      key={`trailing:${message.id}`}
+                      items={trailingProcessItems}
+                      isActive={trailingIsActive}
+                      startedAt={trailingStartedAt}
+                      finalAnswerComplete={false}
+                      finalAnswerStreaming={false}
+                      durationMs={trailingDurationMs}
+                      runCompleted={trailingRunCompleted}
+                    />
+                  )}
+
+                  {/* 4b. 人工安全审批卡片（后置工具触发场景） */}
+                  {hasApprovalSection && hasTrailingProcessSection &&
+                    approvals.map((activity) => (
+                      <div key={activity.id} className="w-full my-1">
+                        <ApprovalCard
+                          activity={activity}
+                          decision={decisionFor(decisions, activity)}
+                          onDecide={onDecide}
+                        />
+                      </div>
+                    ))}
 
                   {/* 6. 文件变更 Diff 汇总卡片：严格归属于本轮产生修改的助手回答，绝不外漏到后续对话 */}
                   {hasDiffSection && (
