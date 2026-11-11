@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type {
   BundledLanguage,
@@ -27,7 +28,7 @@ import type {
   HighlighterGeneric,
   ThemedToken,
 } from "shiki";
-import { createHighlighter } from "shiki";
+import { bundledLanguages, createHighlighter } from "shiki";
 
 // Shiki uses bitflags for font styles: 1=italic, 2=bold, 4=underline
 // oxlint-disable-next-line eslint(no-bitwise)
@@ -58,23 +59,30 @@ const addKeysToTokens = (lines: ThemedToken[][]): KeyedLine[] =>
   }));
 
 // Token rendering component
-const TokenSpan = ({ token }: { token: ThemedToken }) => (
-  <span
-    className="dark:!bg-[var(--shiki-dark-bg)] dark:!text-[var(--shiki-dark)]"
-    style={
-      {
-        backgroundColor: token.bgColor,
-        color: token.color,
-        fontStyle: isItalic(token.fontStyle) ? "italic" : undefined,
-        fontWeight: isBold(token.fontStyle) ? "bold" : undefined,
-        textDecoration: isUnderline(token.fontStyle) ? "underline" : undefined,
-        ...token.htmlStyle,
-      } as CSSProperties
-    }
-  >
-    {token.content}
-  </span>
-);
+const TokenSpan = ({ token }: { token: ThemedToken }) => {
+  const darkText = token.htmlStyle?.["--shiki-dark"];
+  const darkBg = token.htmlStyle?.["--shiki-dark-bg"];
+  return (
+    <span
+      className={cn(
+        darkBg && "dark:!bg-[var(--shiki-dark-bg)]",
+        darkText && "dark:!text-[var(--shiki-dark)]"
+      )}
+      style={
+        {
+          backgroundColor: token.bgColor,
+          color: token.color,
+          fontStyle: isItalic(token.fontStyle) ? "italic" : undefined,
+          fontWeight: isBold(token.fontStyle) ? "bold" : undefined,
+          textDecoration: isUnderline(token.fontStyle) ? "underline" : undefined,
+          ...token.htmlStyle,
+        } as CSSProperties
+      }
+    >
+      {token.content}
+    </span>
+  );
+};
 
 // Line number styles using CSS counters
 const LINE_NUMBER_CLASSES = cn(
@@ -129,23 +137,45 @@ const CodeBlockContext = createContext<CodeBlockContextType>({
   code: "",
 });
 
-// Highlighter cache (singleton per language)
-const highlighterCache = new Map<
-  string,
-  Promise<HighlighterGeneric<BundledLanguage, BundledTheme>>
->();
+const SHIKI_THEMES: [BundledTheme, BundledTheme] = ["github-light", "github-dark"];
+const PRELOAD_LANGUAGES: BundledLanguage[] = [
+  "typescript",
+  "javascript",
+  "tsx",
+  "jsx",
+  "python",
+  "bash",
+  "json",
+  "css",
+  "html",
+  "sql",
+  "yaml",
+  "markdown",
+  "csharp",
+];
 
-// Token cache
+// 全局单例 Shiki Highlighter，避免按语言重复初始化 WASM 实例
+let sharedHighlighter: HighlighterGeneric<BundledLanguage, BundledTheme> | null = null;
+let sharedHighlighterPromise: Promise<HighlighterGeneric<BundledLanguage, BundledTheme>> | null = null;
+const loadedLanguages = new Set<string>();
+const pendingLanguageLoads = new Map<string, Promise<void>>();
+
+// 有界 LRU Token 缓存，防止长时间对话内存膨胀
+const MAX_TOKENS_CACHE = 1000;
 const tokensCache = new Map<string, TokenizedCode>();
 
-// Subscribers for async token updates
+// 异步高亮回调订阅表（支持卸载取消订阅）
 const subscribers = new Map<string, Set<(result: TokenizedCode) => void>>();
 
-const LANGUAGE_ALIASES: Record<string, BundledLanguage | "text"> = {
+const LANGUAGE_ALIASES: Record<string, string> = {
   js: "javascript",
   javascript: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
   ts: "typescript",
   typescript: "typescript",
+  mts: "typescript",
+  cts: "typescript",
   jsx: "jsx",
   tsx: "tsx",
   py: "python",
@@ -153,13 +183,20 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage | "text"> = {
   sh: "bash",
   bash: "bash",
   shell: "bash",
+  shellscript: "bash",
+  shellsession: "bash",
+  console: "bash",
   zsh: "bash",
   html: "html",
+  htm: "html",
   css: "css",
   scss: "scss",
+  less: "less",
   json: "json",
   jsonc: "jsonc",
+  json5: "json5",
   xml: "xml",
+  svg: "xml",
   sql: "sql",
   md: "markdown",
   markdown: "markdown",
@@ -170,11 +207,17 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage | "text"> = {
   go: "go",
   golang: "go",
   c: "c",
+  h: "c",
   cpp: "cpp",
   "c++": "cpp",
+  cc: "cpp",
+  hpp: "cpp",
   cs: "csharp",
   csharp: "csharp",
   "c#": "csharp",
+  fs: "fsharp",
+  fsharp: "fsharp",
+  "f#": "fsharp",
   java: "java",
   php: "php",
   ruby: "ruby",
@@ -182,56 +225,169 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage | "text"> = {
   swift: "swift",
   kotlin: "kotlin",
   kt: "kotlin",
+  kts: "kotlin",
   diff: "diff",
+  patch: "diff",
   dockerfile: "dockerfile",
   docker: "dockerfile",
   powershell: "powershell",
+  pwsh: "powershell",
+  ps: "powershell",
   ps1: "powershell",
+  bat: "bat",
+  batch: "bat",
+  cmd: "bat",
+  make: "makefile",
+  makefile: "makefile",
+  conf: "nginx",
+  nginx: "nginx",
+  env: "dotenv",
+  dotenv: "dotenv",
+  objc: "objc",
+  "objective-c": "objc",
+  tex: "latex",
+  latex: "latex",
+  proto: "proto",
+  protobuf: "proto",
+  tf: "terraform",
+  terraform: "terraform",
   wasm: "wasm",
   toml: "toml",
   graphql: "graphql",
+  gql: "graphql",
+  "vue-html": "html",
   text: "text",
   txt: "text",
   plaintext: "text",
+  plain: "text",
 };
 
 export const normalizeLanguage = (rawLang?: string): BundledLanguage => {
   if (!rawLang || typeof rawLang !== "string") return "text" as BundledLanguage;
   const clean = rawLang.trim().toLowerCase();
-  return (LANGUAGE_ALIASES[clean] ?? "text") as BundledLanguage;
+  if (!clean) return "text" as BundledLanguage;
+  const mapped = LANGUAGE_ALIASES[clean] ?? clean;
+  if (mapped === "text") return "text" as BundledLanguage;
+  if (Object.prototype.hasOwnProperty.call(bundledLanguages, mapped)) {
+    return mapped as BundledLanguage;
+  }
+  return "text" as BundledLanguage;
+};
+
+const hashCodeString = (input: string): string => {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    const c = input.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= c + i;
+    h2 = Math.imul(h2, 0x01000193);
+  }
+  return `${(h1 >>> 0).toString(36)}-${(h2 >>> 0).toString(36)}`;
 };
 
 const getTokensCacheKey = (code: string, language: BundledLanguage) => {
   const safeLang = normalizeLanguage(language);
-  const start = code.slice(0, 100);
-  const end = code.length > 100 ? code.slice(-100) : "";
-  return `${safeLang}:${code.length}:${start}:${end}`;
+  return `${safeLang}:${code.length}:${hashCodeString(code)}`;
 };
 
-const getHighlighter = (
-  language: BundledLanguage
-): Promise<HighlighterGeneric<BundledLanguage, BundledTheme>> => {
-  const safeLang = normalizeLanguage(language);
-  const cached = highlighterCache.get(safeLang);
-  if (cached) {
-    return cached;
+const getCachedTokens = (key: string): TokenizedCode | undefined => {
+  const hit = tokensCache.get(key);
+  if (!hit) return undefined;
+  // LRU 刷新位置
+  tokensCache.delete(key);
+  tokensCache.set(key, hit);
+  return hit;
+};
+
+const setCachedTokens = (key: string, value: TokenizedCode): void => {
+  if (tokensCache.has(key)) {
+    tokensCache.delete(key);
+  } else if (tokensCache.size >= MAX_TOKENS_CACHE) {
+    const oldestKey = tokensCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      tokensCache.delete(oldestKey);
+    }
+  }
+  tokensCache.set(key, value);
+};
+
+const ensureSharedHighlighter = (): Promise<HighlighterGeneric<BundledLanguage, BundledTheme>> => {
+  if (sharedHighlighter) {
+    return Promise.resolve(sharedHighlighter);
+  }
+  if (sharedHighlighterPromise) {
+    return sharedHighlighterPromise;
   }
 
-  const langsToLoad = safeLang === ("text" as BundledLanguage) ? [] : [safeLang];
-
-  const highlighterPromise = createHighlighter({
-    langs: langsToLoad,
-    themes: ["github-light", "github-dark"],
-  }).catch(() => {
-    return createHighlighter({
-      langs: [],
-      themes: ["github-light", "github-dark"],
+  sharedHighlighterPromise = createHighlighter({
+    langs: PRELOAD_LANGUAGES,
+    themes: SHIKI_THEMES,
+  })
+    .catch(() =>
+      createHighlighter({
+        langs: [],
+        themes: SHIKI_THEMES,
+      })
+    )
+    .then((highlighter) => {
+      sharedHighlighter = highlighter;
+      for (const lang of highlighter.getLoadedLanguages()) {
+        loadedLanguages.add(lang);
+      }
+      return highlighter;
+    })
+    .catch((error) => {
+      sharedHighlighterPromise = null;
+      throw error;
     });
-  });
 
-  highlighterCache.set(safeLang, highlighterPromise);
-  return highlighterPromise;
+  return sharedHighlighterPromise;
 };
+
+const ensureLanguageLoaded = async (
+  safeLang: BundledLanguage
+): Promise<HighlighterGeneric<BundledLanguage, BundledTheme>> => {
+  const highlighter = await ensureSharedHighlighter();
+  if (safeLang === ("text" as BundledLanguage)) {
+    return highlighter;
+  }
+  if (loadedLanguages.has(safeLang) || highlighter.getLoadedLanguages().includes(safeLang)) {
+    loadedLanguages.add(safeLang);
+    return highlighter;
+  }
+
+  let pending = pendingLanguageLoads.get(safeLang);
+  if (!pending) {
+    pending = highlighter
+      .loadLanguage(safeLang)
+      .then(() => {
+        loadedLanguages.add(safeLang);
+      })
+      .catch(() => {
+        // 个别语法加载失败时不阻塞后续渲染，回退为纯文本
+      })
+      .finally(() => {
+        pendingLanguageLoads.delete(safeLang);
+      });
+    pendingLanguageLoads.set(safeLang, pending);
+  }
+  await pending;
+  return highlighter;
+};
+
+// 在真实浏览器环境中后台预热常用语法，使首个代码块也有机会在首帧同步着色
+if (
+  typeof window !== "undefined" &&
+  typeof document !== "undefined" &&
+  typeof navigator !== "undefined" &&
+  !navigator.userAgent.includes("jsdom")
+) {
+  queueMicrotask(() => {
+    void ensureSharedHighlighter().catch(() => undefined);
+  });
+}
 
 // Create raw tokens for immediate display while highlighting loads
 const createRawTokens = (code: string): TokenizedCode => ({
@@ -249,6 +405,106 @@ const createRawTokens = (code: string): TokenizedCode => ({
   ),
 });
 
+const tokenizeWithHighlighter = (
+  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>,
+  code: string,
+  safeLang: BundledLanguage
+): TokenizedCode => {
+  const availableLangs = highlighter.getLoadedLanguages();
+  const langToUse = availableLangs.includes(safeLang) ? safeLang : "text";
+  const result = highlighter.codeToTokens(code, {
+    lang: langToUse,
+    themes: {
+      dark: "github-dark",
+      light: "github-light",
+    },
+  });
+
+  return {
+    bg: result.bg ?? "transparent",
+    fg: result.fg ?? "inherit",
+    tokens: result.tokens,
+  };
+};
+
+/** 纯同步高亮：仅当缓存命中或单例 Highlighter 与目标语言均已加载完成时返回，无副作用。 */
+export const highlightCodeSync = (
+  code: string,
+  language: BundledLanguage
+): TokenizedCode | null => {
+  const safeLang = normalizeLanguage(language);
+  if (safeLang === ("text" as BundledLanguage)) {
+    return null;
+  }
+
+  const tokensCacheKey = getTokensCacheKey(code, safeLang);
+  const cached = getCachedTokens(tokensCacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  if (
+    sharedHighlighter &&
+    (loadedLanguages.has(safeLang) || sharedHighlighter.getLoadedLanguages().includes(safeLang))
+  ) {
+    loadedLanguages.add(safeLang);
+    const tokenized = tokenizeWithHighlighter(sharedHighlighter, code, safeLang);
+    setCachedTokens(tokensCacheKey, tokenized);
+    return tokenized;
+  }
+
+  return null;
+};
+
+const subscribeHighlight = (
+  code: string,
+  language: BundledLanguage,
+  callback: (result: TokenizedCode) => void
+): (() => void) => {
+  const safeLang = normalizeLanguage(language);
+  const tokensCacheKey = getTokensCacheKey(code, safeLang);
+
+  const isFirstForKey = !subscribers.has(tokensCacheKey);
+  let subs = subscribers.get(tokensCacheKey);
+  if (!subs) {
+    subs = new Set();
+    subscribers.set(tokensCacheKey, subs);
+  }
+  subs.add(callback);
+
+  if (isFirstForKey) {
+    void ensureLanguageLoaded(safeLang)
+      .then((highlighter) => {
+        const currentSubs = subscribers.get(tokensCacheKey);
+        if (!currentSubs || currentSubs.size === 0) {
+          return;
+        }
+
+        const tokenized =
+          getCachedTokens(tokensCacheKey) ?? tokenizeWithHighlighter(highlighter, code, safeLang);
+        setCachedTokens(tokensCacheKey, tokenized);
+
+        subscribers.delete(tokensCacheKey);
+        for (const sub of currentSubs) {
+          sub(tokenized);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to highlight code:", error);
+        subscribers.delete(tokensCacheKey);
+      });
+  }
+
+  return () => {
+    const currentSubs = subscribers.get(tokensCacheKey);
+    if (!currentSubs) return;
+    currentSubs.delete(callback);
+    if (currentSubs.size === 0) {
+      subscribers.delete(tokensCacheKey);
+    }
+  };
+};
+
 // Synchronous highlight with callback for async results
 export const highlightCode = (
   code: string,
@@ -256,60 +512,16 @@ export const highlightCode = (
   // oxlint-disable-next-line eslint-plugin-promise(prefer-await-to-callbacks)
   callback?: (result: TokenizedCode) => void
 ): TokenizedCode | null => {
-  const tokensCacheKey = getTokensCacheKey(code, language);
-
-  // Return cached result if available
-  const cached = tokensCache.get(tokensCacheKey);
-  if (cached) {
-    return cached;
+  const syncResult = highlightCodeSync(code, language);
+  if (syncResult) {
+    return syncResult;
   }
 
-  // Subscribe callback if provided
   if (callback) {
-    if (!subscribers.has(tokensCacheKey)) {
-      subscribers.set(tokensCacheKey, new Set());
-    }
-    subscribers.get(tokensCacheKey)?.add(callback);
+    subscribeHighlight(code, language, callback);
+  } else {
+    void ensureLanguageLoaded(normalizeLanguage(language)).catch(() => undefined);
   }
-
-  // Start highlighting in background - fire-and-forget async pattern
-  getHighlighter(language)
-    // oxlint-disable-next-line eslint-plugin-promise(prefer-await-to-then)
-    .then((highlighter) => {
-      const availableLangs = highlighter.getLoadedLanguages();
-      const langToUse = availableLangs.includes(language) ? language : "text";
-
-      const result = highlighter.codeToTokens(code, {
-        lang: langToUse,
-        themes: {
-          dark: "github-dark",
-          light: "github-light",
-        },
-      });
-
-      const tokenized: TokenizedCode = {
-        bg: result.bg ?? "transparent",
-        fg: result.fg ?? "inherit",
-        tokens: result.tokens,
-      };
-
-      // Cache the result
-      tokensCache.set(tokensCacheKey, tokenized);
-
-      // Notify all subscribers
-      const subs = subscribers.get(tokensCacheKey);
-      if (subs) {
-        for (const sub of subs) {
-          sub(tokenized);
-        }
-        subscribers.delete(tokensCacheKey);
-      }
-    })
-    // oxlint-disable-next-line eslint-plugin-promise(prefer-await-to-then), eslint-plugin-promise(prefer-await-to-callbacks)
-    .catch((error) => {
-      console.error("Failed to highlight code:", error);
-      subscribers.delete(tokensCacheKey);
-    });
 
   return null;
 };
@@ -440,43 +652,36 @@ export const CodeBlockContent = ({
   language: BundledLanguage;
   showLineNumbers?: boolean;
 }) => {
-  // Memoized raw tokens for immediate display
+  const safeLang = normalizeLanguage(language);
   const rawTokens = useMemo(() => createRawTokens(code), [code]);
 
-  // Synchronous cache lookup — avoids setState in effect for cached results
-  const syncTokens = useMemo(
-    () => highlightCode(code, language) ?? rawTokens,
-    [code, language, rawTokens]
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (safeLang === ("text" as BundledLanguage)) {
+        return () => {};
+      }
+      if (highlightCodeSync(code, safeLang)) {
+        return () => {};
+      }
+      return subscribeHighlight(code, safeLang, () => {
+        onStoreChange();
+      });
+    },
+    [code, safeLang]
   );
 
-  // Async highlighting result (populated after shiki loads)
-  const [asyncTokens, setAsyncTokens] = useState<TokenizedCode | null>(null);
-  const asyncKeyRef = useRef({ code, language });
+  const getSnapshot = useCallback(
+    () => highlightCodeSync(code, safeLang),
+    [code, safeLang]
+  );
 
-  // Invalidate stale async tokens synchronously during render
-  if (
-    asyncKeyRef.current.code !== code ||
-    asyncKeyRef.current.language !== language
-  ) {
-    asyncKeyRef.current = { code, language };
-    setAsyncTokens(null);
-  }
+  const highlightedTokens = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getSnapshot
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    highlightCode(code, language, (result) => {
-      if (!cancelled) {
-        setAsyncTokens(result);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [code, language]);
-
-  const tokenized = asyncTokens ?? syncTokens;
+  const tokenized = highlightedTokens ?? rawTokens;
 
   return (
     <div className="relative overflow-auto">

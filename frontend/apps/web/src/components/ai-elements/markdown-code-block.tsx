@@ -29,78 +29,88 @@ interface MarkdownCodeBlockProps extends ComponentProps<"code"> {
   inline?: boolean;
 }
 
-export const MarkdownCodeBlock = memo(function MarkdownCodeBlock({
-  className,
-  children,
-  inline,
-  node,
-  ...props
-}: MarkdownCodeBlockProps) {
-  // 提取纯文本内容
-  const rawContent = typeof children === "string"
-    ? children
-    : Array.isArray(children)
-      ? children.map((c) => (typeof c === "string" ? c : "")).join("")
-      : String(children ?? "");
+function extractCodeText(children: MarkdownCodeBlockProps["children"]): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) {
+    return children.map((c) => (typeof c === "string" ? c : "")).join("");
+  }
+  return String(children ?? "");
+}
 
-  // 判断是否为行内代码：
-  // 1. 显式带有 inline 属性
-  // 2. 没有包含任何换行且类名中未包含 language- 前缀
-  const hasMultipleLines = rawContent.includes("\n");
-  const hasLanguageClass = Boolean(className?.includes("language-"));
-  const isInline = inline === true || (!hasLanguageClass && !hasMultipleLines);
+export const MarkdownCodeBlock = memo(
+  function MarkdownCodeBlock({
+    className,
+    children,
+    inline,
+    node: _node,
+    ...props
+  }: MarkdownCodeBlockProps) {
+    // 提取纯文本内容
+    const rawContent = extractCodeText(children);
 
-  // 行内代码渲染：适配黑白双色主题
-  if (isInline) {
+    // 判断是否为行内代码：
+    // 1. 显式带有 inline 属性
+    // 2. 没有包含任何换行且类名中未包含 language- 前缀
+    const hasMultipleLines = rawContent.includes("\n");
+    const hasLanguageClass = Boolean(className?.includes("language-"));
+    const isInline = inline === true || (!hasLanguageClass && !hasMultipleLines);
+
+    // 行内代码渲染：适配黑白双色主题
+    if (isInline) {
+      return (
+        <code
+          className={cn(
+            "rounded-md border border-zinc-200/90 bg-zinc-100/90 px-1.5 py-0.5 font-mono text-[12.5px] text-zinc-800 dark:border-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-200",
+            className
+          )}
+          data-streamdown="inline-code"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    }
+
+    // 提取语言名称（如 language-typescript -> typescript）
+    const langMatch = className?.match(/language-([a-zA-Z0-9_+#.-]+)/);
+    const rawLang = langMatch ? langMatch[1] : "";
+    const normalizedLang = normalizeLanguage(rawLang);
+    const displayLang = rawLang || normalizedLang || "code";
+
+    // 去除代码结尾多余的换行符
+    const cleanCode = rawContent.replace(/\n$/, "");
+
+    // 拦截 Mermaid 图表语言，自动渲染为交互式图表卡片
+    if (rawLang?.toLowerCase() === "mermaid" || normalizedLang === "mermaid") {
+      return <DiagramViewer code={cleanCode} />;
+    }
+
     return (
-      <code
-        className={cn(
-          "rounded-md border border-zinc-200/90 bg-zinc-100/90 px-1.5 py-0.5 font-mono text-[12.5px] text-zinc-800 dark:border-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-200",
-          className
-        )}
-        data-streamdown="inline-code"
-        {...props}
-      >
-        {children}
-      </code>
+      <div className="my-3.5 w-full overflow-hidden" data-streamdown="code-block-wrapper">
+        <CodeBlock
+          code={cleanCode}
+          language={normalizedLang as BundledLanguage}
+          className="w-full rounded-xl border border-zinc-200 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-950 transition-colors"
+        >
+          {/* 顶部 Header：语言标题 + 复制按钮 */}
+          <CodeBlockHeader className="flex items-center justify-between border-b border-zinc-200/80 bg-zinc-100/80 px-3.5 py-2 text-zinc-600 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:text-zinc-400 select-none">
+            <CodeBlockTitle>
+              <CodeBlockFilename className="text-[12px] font-mono lowercase">
+                {displayLang}
+              </CodeBlockFilename>
+            </CodeBlockTitle>
+            <CodeBlockActions>
+              <CodeBlockCopyButton className="size-7 rounded-md text-zinc-500 hover:bg-zinc-200/80 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition-colors cursor-pointer" />
+            </CodeBlockActions>
+          </CodeBlockHeader>
+        </CodeBlock>
+      </div>
     );
-  }
-
-  // 提取语言名称（如 language-typescript -> typescript）
-  const langMatch = className?.match(/language-([a-zA-Z0-9_+#.-]+)/);
-  const rawLang = langMatch ? langMatch[1] : "";
-  const normalizedLang = normalizeLanguage(rawLang);
-  const displayLang = rawLang || normalizedLang || "code";
-
-  // 去除代码结尾多余的换行符
-  const cleanCode = rawContent.replace(/\n$/, "");
-
-  // 拦截 Mermaid 图表语言，自动渲染为交互式图表卡片
-  if (rawLang?.toLowerCase() === "mermaid" || normalizedLang === "mermaid") {
-    return <DiagramViewer code={cleanCode} />;
-  }
-
-  return (
-    <div className="my-3.5 w-full overflow-hidden" data-streamdown="code-block-wrapper">
-      <CodeBlock
-        code={cleanCode}
-        language={normalizedLang as BundledLanguage}
-        className="w-full rounded-xl border border-zinc-200 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-950 transition-colors"
-      >
-        {/* 顶部 Header：语言标题 + 复制按钮 */}
-        <CodeBlockHeader className="flex items-center justify-between border-b border-zinc-200/80 bg-zinc-100/80 px-3.5 py-2 text-zinc-600 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:text-zinc-400 select-none">
-          <CodeBlockTitle>
-            <CodeBlockFilename className="text-[12px] font-mono lowercase">
-              {displayLang}
-            </CodeBlockFilename>
-          </CodeBlockTitle>
-          <CodeBlockActions>
-            <CodeBlockCopyButton className="size-7 rounded-md text-zinc-500 hover:bg-zinc-200/80 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition-colors cursor-pointer" />
-          </CodeBlockActions>
-        </CodeBlockHeader>
-      </CodeBlock>
-    </div>
-  );
-});
+  },
+  (prevProps, nextProps) =>
+    prevProps.className === nextProps.className &&
+    prevProps.inline === nextProps.inline &&
+    extractCodeText(prevProps.children) === extractCodeText(nextProps.children)
+);
 
 MarkdownCodeBlock.displayName = "MarkdownCodeBlock";
