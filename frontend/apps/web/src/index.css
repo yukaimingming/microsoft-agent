@@ -976,6 +976,19 @@ html.light [class*="shimmer-color-blue-500/60"] {
   --shimmer-color: rgba(37, 99, 235, 0.95);
 }
 
+/* 详细过程面板统一中性灰微光（杜绝思考链与工具行割裂感） */
+.process-group .shimmer,
+.process-group .shimmer-color-blue-500\/60,
+.process-group [class*="shimmer-color-blue-500/60"] {
+  --shimmer-color: rgba(244, 244, 245, 0.95);
+}
+
+html.light .process-group .shimmer,
+html.light .process-group .shimmer-color-blue-500\/60,
+html.light .process-group [class*="shimmer-color-blue-500/60"] {
+  --shimmer-color: rgba(24, 24, 27, 0.95);
+}
+
 .shimmer-color-\[\#378ADD\],
 .shimmer-color-blue {
   --shimmer-color: #378ADD !important;
@@ -1027,8 +1040,8 @@ html.light [data-testid="wechat-show-qrcode-btn"]:hover {
   }
 }
 .animated-gradient-text {
-  --animated-gradient-text-strong: #e8ecf3;
-  --animated-gradient-text-soft: rgba(232, 236, 243, 0.22);
+  --animated-gradient-text-strong: #f4f4f5;
+  --animated-gradient-text-soft: rgba(244, 244, 245, 0.25);
   background: linear-gradient(
     90deg,
     var(--animated-gradient-text-strong) 0%,
@@ -1049,13 +1062,66 @@ html.light [data-testid="wechat-show-qrcode-btn"]:hover {
   backface-visibility: hidden;
 }
 html.light .animated-gradient-text {
-  --animated-gradient-text-strong: #09090b;
-  --animated-gradient-text-soft: rgba(9, 9, 11, 0.24);
+  --animated-gradient-text-strong: #18181b;
+  --animated-gradient-text-soft: rgba(24, 24, 27, 0.25);
 }
 @media (prefers-reduced-motion: reduce) {
   .animated-gradient-text {
     animation: none;
   }
+}
+
+/* ================= 详细过程思考链（ReasoningActivity）中性灰主题适配 ================= */
+.reasoning-activity {
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-border-subtle: #27272a;
+}
+
+.reasoning-activity summary,
+.reasoning-activity .reasoning-roll-preview-text,
+.reasoning-activity .reasoning-content-wrapper {
+  color: #a1a1aa;
+}
+
+.reasoning-activity .reasoning-roll-preview-container,
+.reasoning-activity summary svg,
+.reasoning-activity summary span.text-\[var\(--color-text-muted\)\] {
+  color: #71717a;
+}
+
+.reasoning-activity .reasoning-content-wrapper {
+  border-color: #27272a;
+}
+
+.reasoning-activity [data-streamdown] {
+  color: #a1a1aa;
+}
+
+html.light .reasoning-activity {
+  --color-text-secondary: #52525b;
+  --color-text-muted: #71717a;
+  --color-border-subtle: #e4e4e7;
+}
+
+html.light .reasoning-activity summary,
+html.light .reasoning-activity .reasoning-roll-preview-text,
+html.light .reasoning-activity .reasoning-content-wrapper {
+  color: #52525b;
+}
+
+html.light .reasoning-activity .reasoning-roll-preview-container,
+html.light .reasoning-activity summary svg,
+html.light .reasoning-activity summary span.text-\[var\(--color-text-muted\)\] {
+  color: #71717a;
+}
+
+html.light .reasoning-activity .reasoning-content-wrapper {
+  border-color: #e4e4e7;
+}
+
+html.light .reasoning-activity [data-streamdown] {
+  color: #52525b;
 }
 
 /* ================= 左侧上下文时间线与悬停预览框（深浅色主题适配） ================= */

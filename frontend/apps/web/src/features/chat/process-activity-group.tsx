@@ -423,12 +423,12 @@ function ReasoningRollPreview({ text, shimmer }: { text: string; shimmer?: boole
   return (
     <span
       ref={containerRef}
-      className="inline-block min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] leading-[18px] text-[var(--color-text-muted)]"
+      className="reasoning-roll-preview-container inline-block min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] leading-[18px] text-[var(--color-text-muted)]"
       style={overflow ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
     >
       <span
         ref={textRef}
-        className={cn("inline-block min-w-max select-none", shimmer && "shimmer shimmer-color-blue-500/60 text-foreground font-medium")}
+        className={cn("reasoning-roll-preview-text inline-block min-w-max select-none text-[var(--color-text-secondary)]", shimmer && "shimmer shimmer-color-blue-500/60 font-medium")}
       >
         {lastLine}
       </span>
@@ -462,7 +462,7 @@ function ReasoningActivity({
   // 空流式内容不渲染预览行，但保留标签行
   if (streaming && !item.content.trim()) {
     return (
-      <div className="process-activity-enter group/reasoning">
+      <div className="process-activity-enter group/reasoning reasoning-activity">
         <details
           className="group"
           open={open}
@@ -484,7 +484,7 @@ function ReasoningActivity({
   }
 
   return (
-    <div className="process-activity-enter group/reasoning">
+    <div className="process-activity-enter group/reasoning reasoning-activity">
       <details
         className="group"
         open={open}
@@ -519,7 +519,7 @@ function ReasoningActivity({
           />
         </summary>
         {open && (
-          <div className="ml-[26px] mt-1.5 break-words border-l border-[var(--color-border-subtle)] pl-3 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
+          <div className="reasoning-content-wrapper ml-[26px] mt-1.5 break-words border-l border-[var(--color-border-subtle)] pl-3 text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
             <StreamingText content={item.content} streaming={item.streaming} />
           </div>
         )}
